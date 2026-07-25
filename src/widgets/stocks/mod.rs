@@ -2062,8 +2062,8 @@ fn render_graph_panel(
     // MACD joins only when there is enough room for all three graphs.
     let available_plot_h = area.height.saturating_sub(header_h + xaxis_h);
     let (rsi_h, macd_h) = match (show_rsi, show_macd, available_plot_h) {
-        (true, true, h) if h >= 30 => (6, 6),
-        (true, _, h) if h >= 16 => (6, 0),
+        (true, true, h) if h >= 36 => (10, 8),
+        (true, _, h) if h >= 18 => (10, 0),
         _ => (0, 0),
     };
     let indicator_gaps = u16::from(rsi_h > 0) + u16::from(macd_h > 0);
@@ -2459,6 +2459,24 @@ fn render_rsi_panel(
         100.0,
         Color::Magenta,
     );
+    render_rsi_level_label(
+        frame,
+        area_x + label_w,
+        y,
+        width,
+        height,
+        70.0,
+        "Перекупленість 70",
+    );
+    render_rsi_level_label(
+        frame,
+        area_x + label_w,
+        y,
+        width,
+        height,
+        30.0,
+        "Перепроданість 30",
+    );
 }
 
 fn render_macd_panel(
@@ -2530,6 +2548,27 @@ fn render_indicator_guides(
             Rect::new(x, y + row.min(height - 1), width, 1),
         );
     }
+}
+
+fn render_rsi_level_label(
+    frame: &mut Frame,
+    x: u16,
+    y: u16,
+    width: u16,
+    height: u16,
+    value: f64,
+    label: &str,
+) {
+    if width == 0 || height == 0 {
+        return;
+    }
+    let row = ((1.0 - value / 100.0) * (height.saturating_sub(1) as f64)).round() as u16;
+    let label_w = label.chars().count() as u16;
+    let label_x = x + width.saturating_sub(label_w);
+    frame.render_widget(
+        Paragraph::new(Span::styled(label, Style::default().fg(Color::Magenta))),
+        Rect::new(label_x, y + row.min(height - 1), width.min(label_w), 1),
+    );
 }
 
 /// Paint only the occupied braille cells so a second indicator line can share
