@@ -1207,12 +1207,9 @@ fn list_ticker_at(
                 return None;
             }
             cursor += 2;
-        } else {
-            if rel == cursor {
-                return None;
-            }
-            cursor += 1;
         }
+        // With no indices, `build_list_lines` starts directly with the
+        // watchlist ticker rows — there is no heading to skip here.
         for i in 0..watchlist_count {
             if rel == cursor {
                 return Some(indices_count + i);

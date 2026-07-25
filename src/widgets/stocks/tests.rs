@@ -1080,3 +1080,11 @@ fn mouse_layout_uses_the_same_footer_carve_out_as_rendering() {
     assert_eq!(list.height, 9);
     assert_eq!(graph.y, 11, "graph hitbox must begin where it is drawn");
 }
+
+#[test]
+fn watchlist_without_indices_has_no_phantom_click_header() {
+    let area = ratatui::layout::Rect::new(0, 0, 30, 8);
+    assert_eq!(list_ticker_at(0, area, 0, 3, false, 0), Some(0));
+    assert_eq!(list_ticker_at(1, area, 0, 3, false, 0), Some(1));
+    assert_eq!(list_ticker_at(2, area, 0, 3, false, 0), Some(2));
+}
