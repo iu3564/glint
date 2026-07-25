@@ -59,9 +59,7 @@ impl Period {
             Period::Week => "1W",
             Period::Month => "1M",
             Period::SixMonth => "6M",
-            // Unlike the English finance shorthand "YTD", this explicitly
-            // says that the chart starts on 1 January of the current year.
-            Period::YearToDate => "ВІД РОКУ",
+            Period::YearToDate => "YTD",
             Period::Year => "1Y",
             Period::ThreeYear => "3Y",
             Period::FiveYear => "5Y",
@@ -79,7 +77,6 @@ impl Period {
             "1W" => Some(Period::Week),
             "1M" => Some(Period::Month),
             "6M" => Some(Period::SixMonth),
-            // Keep YTD for existing runtime-state files and manual configs.
             "YTD" | "ВІД РОКУ" => Some(Period::YearToDate),
             "1Y" => Some(Period::Year),
             "3Y" => Some(Period::ThreeYear),

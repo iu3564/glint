@@ -1117,7 +1117,7 @@ impl StocksWidget {
         // whitespace. Combined with the 1-col explicit gap between
         // panels, that's ~2 visual spaces between the list and the
         // stats column — tight without crowding.
-        const WIDE_LIST_W: u16 = 30;
+        const WIDE_LIST_W: u16 = 32;
         const WIDE_STATS_W: u16 = 26;
         const MIN_GRAPH_W: u16 = 24;
         let is_wide = body.width >= WIDE_LIST_W + MIN_GRAPH_W;
@@ -1398,7 +1398,7 @@ impl Widget for StocksWidget {
         // whitespace. Combined with the 1-col explicit gap between
         // panels, that's ~2 visual spaces between the list and the
         // stats column — tight without crowding.
-        const WIDE_LIST_W: u16 = 30;
+        const WIDE_LIST_W: u16 = 32;
         const WIDE_STATS_W: u16 = 26;
         const MIN_GRAPH_W: u16 = 24;
         let is_wide = body.width >= WIDE_LIST_W + MIN_GRAPH_W;
