@@ -14,6 +14,7 @@ Copy the three TOML files into the active profile directory, for example:
 
 Do not copy credentials into this directory. Configure OpenAI or Anthropic API access separately if you want on-demand article summaries.
 
-The stock graph shows RSI(14) and MACD(12,26,9) in separate lower panels by
-default. Set `show_rsi = false` or `show_macd = false` in `stocks.toml` if a
-smaller terminal should reserve more height for the price chart.
+The stock graph overlays EMA(20) and EMA(50) on price and shows RSI(14) below
+it. MACD(12,26,9) appears as a second lower panel when the terminal is tall
+enough. Set `show_ema`, `show_rsi`, or `show_macd` to `false` in `stocks.toml`
+when you want to reserve more room for the price chart.

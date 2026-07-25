@@ -90,6 +90,10 @@ pub struct StocksConfig {
     #[serde(default = "default_pad_intraday_to_full_day")]
     pub pad_intraday_to_full_day: bool,
 
+    /// Overlay EMA(20) and EMA(50) on the price graph.
+    #[serde(default = "default_show_ema")]
+    pub show_ema: bool,
+
     /// Show RSI(14) below the price graph whenever the widget has enough height.
     #[serde(default = "default_show_rsi")]
     pub show_rsi: bool,
@@ -112,6 +116,10 @@ fn default_graph_high_low_lines() -> bool {
 }
 
 fn default_pad_intraday_to_full_day() -> bool {
+    true
+}
+
+fn default_show_ema() -> bool {
     true
 }
 
@@ -175,6 +183,7 @@ impl Default for StocksConfig {
             horizontal_scroll_period: false,
             graph_high_low_lines: default_graph_high_low_lines(),
             pad_intraday_to_full_day: default_pad_intraday_to_full_day(),
+            show_ema: default_show_ema(),
             show_rsi: default_show_rsi(),
             show_macd: default_show_macd(),
             colors: ColorScheme::default(),
@@ -1477,6 +1486,7 @@ impl Widget for StocksWidget {
                 self.period,
                 self.config.graph_high_low_lines,
                 self.config.pad_intraday_to_full_day,
+                self.config.show_ema,
                 self.config.show_rsi,
                 self.config.show_macd,
                 &self.theme,
@@ -1518,6 +1528,7 @@ impl Widget for StocksWidget {
                 self.period,
                 self.config.graph_high_low_lines,
                 self.config.pad_intraday_to_full_day,
+                self.config.show_ema,
                 self.config.show_rsi,
                 self.config.show_macd,
                 &self.theme,
@@ -1902,6 +1913,7 @@ fn render_graph_panel(
     period: Period,
     show_high_low_lines: bool,
     pad_intraday_to_full_day: bool,
+    show_ema: bool,
     show_rsi: bool,
     show_macd: bool,
     theme: &Theme,
@@ -1991,6 +2003,12 @@ fn render_graph_panel(
             ));
         }
     }
+    if show_ema {
+        header_spans.push(Span::raw("  "));
+        header_spans.push(Span::styled("EMA20", Style::default().fg(Color::Cyan)));
+        header_spans.push(Span::raw("  "));
+        header_spans.push(Span::styled("EMA50", Style::default().fg(Color::Yellow)));
+    }
     let header = Line::from(header_spans);
     frame.render_widget(
         Paragraph::new(header),
@@ -2039,12 +2057,13 @@ fn render_graph_panel(
         return;
     }
 
-    // RSI/MACD live in their own compact panels beneath the price trace. On
-    // short cells we preserve price readability first: hide MACD, then RSI.
+    // RSI/MACD live in their own panels beneath the price trace. Preserve a
+    // useful price chart first: a normal dashboard shows a tall RSI panel;
+    // MACD joins only when there is enough room for all three graphs.
     let available_plot_h = area.height.saturating_sub(header_h + xaxis_h);
     let (rsi_h, macd_h) = match (show_rsi, show_macd, available_plot_h) {
-        (true, true, h) if h >= 15 => (4, 4),
-        (true, _, h) if h >= 10 => (4, 0),
+        (true, true, h) if h >= 30 => (6, 6),
+        (true, _, h) if h >= 16 => (6, 0),
         _ => (0, 0),
     };
     let indicator_gaps = u16::from(rsi_h > 0) + u16::from(macd_h > 0);
@@ -2054,6 +2073,8 @@ fn render_graph_panel(
     }
     let rsi = (rsi_h > 0).then(|| rsi_14(intraday_render));
     let macd = (macd_h > 0).then(|| macd_12_26_9(intraday_render));
+    let ema20 = show_ema.then(|| ema(intraday_render, 20));
+    let ema50 = show_ema.then(|| ema(intraday_render, 50));
 
     // Compute y-range from the visible bars.
     let (mut min, mut max) = (f64::INFINITY, f64::NEG_INFINITY);
@@ -2168,6 +2189,32 @@ fn render_graph_panel(
                 }),
             )),
             rect,
+        );
+    }
+    if let Some(ema20) = ema20.as_deref() {
+        render_braille_overlay(
+            frame,
+            plot_x,
+            plot_top,
+            trace_w,
+            plot_h,
+            ema20,
+            plot_min,
+            plot_max,
+            Color::Cyan,
+        );
+    }
+    if let Some(ema50) = ema50.as_deref() {
+        render_braille_overlay(
+            frame,
+            plot_x,
+            plot_top,
+            trace_w,
+            plot_h,
+            ema50,
+            plot_min,
+            plot_max,
+            Color::Yellow,
         );
     }
 

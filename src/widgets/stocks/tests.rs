@@ -1070,6 +1070,16 @@ fn macd_has_parallel_non_empty_lines() {
 }
 
 #[test]
+fn ema_tracks_price_with_a_slower_long_period_line() {
+    let values: Vec<f64> = (0..80).map(|i| i as f64).collect();
+    let fast = ema(&values, 20);
+    let slow = ema(&values, 50);
+    assert_eq!(fast.len(), values.len());
+    assert_eq!(slow.len(), values.len());
+    assert!(fast.last().unwrap() > slow.last().unwrap());
+}
+
+#[test]
 fn mouse_layout_uses_the_same_footer_carve_out_as_rendering() {
     let widget = build_widget(StocksConfig::default());
     // 50×20 outer cell means a 48×18 inner area. Rendering reserves one
