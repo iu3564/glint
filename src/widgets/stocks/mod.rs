@@ -2492,7 +2492,13 @@ fn render_macd_panel(
     if height == 0 || width == 0 || macd.is_empty() || signal.is_empty() {
         return;
     }
-    let (mut min, mut max) = series_bounds(macd.iter().chain(signal.iter()).copied());
+    let histogram: Vec<f64> = macd.iter().zip(signal).map(|(m, s)| m - s).collect();
+    let (mut min, mut max) = series_bounds(
+        macd.iter()
+            .chain(signal.iter())
+            .chain(histogram.iter())
+            .copied(),
+    );
     min = min.min(0.0);
     max = max.max(0.0);
     if (max - min).abs() < f64::EPSILON {
@@ -2500,10 +2506,23 @@ fn render_macd_panel(
         max += 1.0;
     }
     frame.render_widget(
-        Paragraph::new(Span::styled("MACD", Style::default().fg(Color::Cyan))),
+        Paragraph::new(Line::from(vec![
+            Span::styled("MACD ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled("■ гістограма", Style::default().fg(Color::LightGreen)),
+        ])),
         Rect::new(area_x, y, label_w, 1),
     );
     render_indicator_guides(frame, area_x + label_w, y, width, height, min, max, &[0.0]);
+    render_macd_histogram(
+        frame,
+        area_x + label_w,
+        y,
+        width,
+        height,
+        &histogram,
+        min,
+        max,
+    );
     render_braille_overlay(frame, area_x + label_w, y, width, height, macd, min, max, Color::Cyan);
     render_braille_overlay(
         frame,
@@ -2515,6 +2534,120 @@ fn render_macd_panel(
         min,
         max,
         Color::Yellow,
+    );
+    render_macd_cross_markers(
+        frame,
+        area_x + label_w,
+        y,
+        width,
+        height,
+        macd,
+        signal,
+        min,
+        max,
+    );
+    render_macd_zero_label(frame, area_x + label_w, y, width, height, min, max);
+}
+
+fn series_row(value: f64, min: f64, max: f64, height: u16) -> u16 {
+    let span = (max - min).max(f64::MIN_POSITIVE);
+    ((1.0 - (value - min) / span) * height.saturating_sub(1) as f64).round() as u16
+}
+
+fn render_macd_histogram(
+    frame: &mut Frame,
+    x: u16,
+    y: u16,
+    width: u16,
+    height: u16,
+    histogram: &[f64],
+    min: f64,
+    max: f64,
+) {
+    if width == 0 || height == 0 || histogram.is_empty() {
+        return;
+    }
+    let zero_row = series_row(0.0, min, max, height).min(height - 1);
+    for column in 0..width {
+        let index = if width == 1 {
+            0
+        } else {
+            column as usize * (histogram.len() - 1) / (width - 1) as usize
+        };
+        let value = histogram[index];
+        let value_row = series_row(value, min, max, height).min(height - 1);
+        let (from, to) = if value_row <= zero_row {
+            (value_row, zero_row)
+        } else {
+            (zero_row, value_row)
+        };
+        let color = if value >= 0.0 { Color::LightGreen } else { Color::LightRed };
+        for row in from..=to {
+            frame.render_widget(
+                Paragraph::new(Span::styled("▐", Style::default().fg(color))),
+                Rect::new(x + column, y + row, 1, 1),
+            );
+        }
+    }
+}
+
+fn render_macd_cross_markers(
+    frame: &mut Frame,
+    x: u16,
+    y: u16,
+    width: u16,
+    height: u16,
+    macd: &[f64],
+    signal: &[f64],
+    min: f64,
+    max: f64,
+) {
+    if width == 0 || height == 0 || macd.len() < 2 || signal.len() != macd.len() {
+        return;
+    }
+    let mut last_column: Option<u16> = None;
+    for i in 1..macd.len() {
+        let previous = macd[i - 1] - signal[i - 1];
+        let current = macd[i] - signal[i];
+        let bullish = previous <= 0.0 && current > 0.0;
+        let bearish = previous >= 0.0 && current < 0.0;
+        if !bullish && !bearish {
+            continue;
+        }
+        let column = (i as f64 / (macd.len() - 1) as f64 * width.saturating_sub(1) as f64).round() as u16;
+        if last_column.is_some_and(|last| column.saturating_sub(last) < 5) {
+            continue;
+        }
+        let line_row = series_row(macd[i], min, max, height).min(height - 1);
+        let (marker, row, color) = if bullish {
+            ('▲', line_row.saturating_sub(1), Color::LightGreen)
+        } else {
+            ('▼', (line_row + 1).min(height - 1), Color::LightRed)
+        };
+        frame.render_widget(
+            Paragraph::new(Span::styled(marker.to_string(), Style::default().fg(color).add_modifier(Modifier::BOLD))),
+            Rect::new(x + column, y + row, 1, 1),
+        );
+        last_column = Some(column);
+    }
+}
+
+fn render_macd_zero_label(
+    frame: &mut Frame,
+    x: u16,
+    y: u16,
+    width: u16,
+    height: u16,
+    min: f64,
+    max: f64,
+) {
+    if width < 2 || height == 0 {
+        return;
+    }
+    let row = series_row(0.0, min, max, height).min(height - 1);
+    frame.render_widget(
+        Paragraph::new(Span::styled("0", Style::default().fg(Color::White).add_modifier(Modifier::BOLD))),
+        Rect::new(x + width - 1, y + row, 1, 1),
     );
 }
 
