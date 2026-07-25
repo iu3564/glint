@@ -1956,8 +1956,8 @@ fn render_graph_panel(
         return;
     };
 
-    // Reserve rows: header(1) + toggle(1) + xaxis(1).
-    let header_h = 2u16; // header + toggle
+    // Reserve rows: header(1) + toggle(1) + indicator summary(1) + xaxis(1).
+    let header_h = 3u16;
     let xaxis_h = 1u16;
     let plot_top = area.y + header_h;
 
@@ -2075,6 +2075,14 @@ fn render_graph_panel(
     let macd = (macd_h > 0).then(|| macd_12_26_9(intraday_render));
     let ema20 = show_ema.then(|| ema(intraday_render, 20));
     let ema50 = show_ema.then(|| ema(intraday_render, 50));
+    render_indicator_summary(
+        frame,
+        Rect::new(area.x, area.y + 2, area.width, 1),
+        ema20.as_deref(),
+        ema50.as_deref(),
+        rsi.as_deref(),
+        macd.as_ref(),
+    );
 
     // Compute y-range from the visible bars.
     let (mut min, mut max) = (f64::INFINITY, f64::NEG_INFINITY);
@@ -2425,6 +2433,62 @@ fn macd_12_26_9(values: &[f64]) -> (Vec<f64>, Vec<f64>) {
     let macd: Vec<f64> = fast.iter().zip(&slow).map(|(f, s)| f - s).collect();
     let signal = ema(&macd, 9);
     (macd, signal)
+}
+
+/// One-line, descriptive read of the indicators. This is deliberately a
+/// momentum summary, not a buy/sell instruction.
+fn render_indicator_summary(
+    frame: &mut Frame,
+    area: Rect,
+    ema20: Option<&[f64]>,
+    ema50: Option<&[f64]>,
+    rsi: Option<&[f64]>,
+    macd: Option<&(Vec<f64>, Vec<f64>)>,
+) {
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+    let mut spans = Vec::new();
+    if let (Some(fast), Some(slow)) = (ema20.and_then(|v| v.last()), ema50.and_then(|v| v.last())) {
+        let spread = (*fast - *slow) / slow.abs().max(f64::MIN_POSITIVE);
+        let (text, color) = if spread > 0.001 {
+            ("Тренд: ▲ висхідний", Color::LightGreen)
+        } else if spread < -0.001 {
+            ("Тренд: ▼ низхідний", Color::LightRed)
+        } else {
+            ("Тренд: → боковий", Color::LightYellow)
+        };
+        spans.push(Span::styled(text, Style::default().fg(color).add_modifier(Modifier::BOLD)));
+    }
+    if let Some(value) = rsi.and_then(|values| values.last()).copied() {
+        if !spans.is_empty() {
+            spans.push(Span::raw("  ·  "));
+        }
+        let (text, color) = if value >= 70.0 {
+            (format!("RSI: {value:.0} перекупленість"), Color::LightRed)
+        } else if value <= 30.0 {
+            (format!("RSI: {value:.0} перепроданість"), Color::LightGreen)
+        } else {
+            (format!("RSI: {value:.0} нейтрально"), Color::LightMagenta)
+        };
+        spans.push(Span::styled(text, Style::default().fg(color).add_modifier(Modifier::BOLD)));
+    }
+    if let Some((line, signal)) = macd {
+        if let (Some(macd_value), Some(signal_value)) = (line.last(), signal.last()) {
+            if !spans.is_empty() {
+                spans.push(Span::raw("  ·  "));
+            }
+            let (text, color) = if macd_value > signal_value {
+                ("MACD: ▲ бичачий імпульс", Color::LightGreen)
+            } else if macd_value < signal_value {
+                ("MACD: ▼ ведмежий імпульс", Color::LightRed)
+            } else {
+                ("MACD: → нейтрально", Color::LightYellow)
+            };
+            spans.push(Span::styled(text, Style::default().fg(color).add_modifier(Modifier::BOLD)));
+        }
+    }
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
 fn render_rsi_panel(
