@@ -2506,10 +2506,10 @@ fn render_macd_panel(
         max += 1.0;
     }
     frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled("MACD ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-            Span::styled("■ гістограма", Style::default().fg(Color::LightGreen)),
-        ])),
+        Paragraph::new(Span::styled(
+            "MACD",
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        )),
         Rect::new(area_x, y, label_w, 1),
     );
     render_indicator_guides(frame, area_x + label_w, y, width, height, min, max, &[0.0]);
