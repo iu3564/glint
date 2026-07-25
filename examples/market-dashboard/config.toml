@@ -1,0 +1,23 @@
+version = 1
+
+[global]
+theme = "default"
+command_key = ":"
+refresh_all_on_focus = true
+log_level = "info"
+mouse_scroll = "natural"
+show_status_bar = true
+
+[layout]
+columns = [100]
+rows = [80, 20]
+
+[[layout.cells]]
+widget = "stocks"
+col = 0
+row = 0
+
+[[layout.cells]]
+widget = "news"
+col = 0
+row = 1
