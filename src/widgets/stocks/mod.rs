@@ -20,7 +20,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Paragraph},
+    widgets::{Block, BorderType, Borders, Clear, Paragraph},
     Frame,
 };
 use serde::Deserialize;
@@ -239,6 +239,8 @@ struct StocksState {
     /// widget paints a modal and the key dispatcher swallows everything
     /// except `y` (confirm) and any-other-key (cancel).
     confirm_remove: Option<String>,
+    /// On-demand, child-friendly explanation of the price indicators.
+    show_indicator_help: bool,
     /// Transient status line for "Added AAPL to watchlist" / "Can't
     /// remove primary" feedback. Cleared once the TTL elapses.
     status: Option<TimedFeedback<String>>,
@@ -305,6 +307,7 @@ impl Default for StocksState {
             poll: crate::polling::PollTracker::default(),
             any_inflight: false,
             confirm_remove: None,
+            show_indicator_help: false,
             status: None,
             dirty: false,
             force_next_refresh: true,
@@ -1089,6 +1092,60 @@ impl StocksWidget {
         );
     }
 
+    fn render_indicator_help(&self, frame: &mut Frame, parent: Rect) {
+        const HELP_W: u16 = 84;
+        const HELP_H: u16 = 16;
+        if parent.width < 42 || parent.height < 12 {
+            return;
+        }
+        let rect = Rect {
+            x: parent.x + parent.width.saturating_sub(HELP_W.min(parent.width)) / 2,
+            y: parent.y + parent.height.saturating_sub(HELP_H.min(parent.height)) / 2,
+            width: HELP_W.min(parent.width),
+            height: HELP_H.min(parent.height),
+        };
+        frame.render_widget(Clear, rect);
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(self.theme.border_focused)
+            .title(Span::styled(
+                " Довідка: як читати графіки ",
+                self.theme.text_selected.add_modifier(Modifier::BOLD),
+            ));
+        let inner = block.inner(rect);
+        frame.render_widget(block, rect);
+        let lines = vec![
+            Line::from(Span::styled("Ціна", Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD))),
+            Line::from("Зелена або червона лінія — скільки інструмент коштує зараз."),
+            Line::from(vec![
+                Span::styled("EMA20 ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::raw("— швидка середня ціна за приблизно 20 кроків."),
+            ]),
+            Line::from(vec![
+                Span::styled("EMA50 ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                Span::raw("— повільніша середня за приблизно 50 кроків."),
+            ]),
+            Line::from("EMA20 вище EMA50 — рух частіше вгору; нижче — частіше вниз."),
+            Line::from(vec![
+                Span::styled("RSI ", Style::default().fg(Color::LightMagenta).add_modifier(Modifier::BOLD)),
+                Span::raw("— наскільки ціна розігналась. Вище 70 — «розігріта», нижче 30 — «просіла»."),
+            ]),
+            Line::from(vec![
+                Span::styled("MACD ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::raw("— чи прискорюється рух. Блакитна й жовта лінії порівнюють темп."),
+            ]),
+            Line::from("Зелені/червоні стовпчики — імпульс сильнішає вгору/вниз; ▲/▼ — перетини ліній."),
+            Line::from("«Контекст» поєднує повільний тренд EMA і короткий рух MACD."),
+            Line::from(Span::styled(
+                "Це підказки для розуміння руху, а не команда купувати чи продавати.",
+                self.theme.text_dim,
+            )),
+            Line::from(Span::styled("[i] або [Esc] — закрити", self.theme.text_dim)),
+        ];
+        frame.render_widget(Paragraph::new(lines), inner);
+    }
+
     /// Compute the same panel rects `render` uses so click handlers can map
     /// coordinates back to a target panel.
     fn compute_layout(&self, inner: Rect) -> StocksPanels {
@@ -1585,6 +1642,14 @@ impl Widget for StocksWidget {
         if let Some(sym) = pending {
             self.render_confirm_modal(frame, inner, &sym);
         }
+        let show_indicator_help = self
+            .state
+            .lock()
+            .expect("stocks state poisoned")
+            .show_indicator_help;
+        if show_indicator_help {
+            self.render_indicator_help(frame, inner);
+        }
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> EventResult {
@@ -1615,6 +1680,20 @@ impl Widget for StocksWidget {
             match crate::ui::modal::dispatch_key(key) {
                 crate::ui::modal::ConfirmChoice::Confirm => self.confirm_remove(),
                 crate::ui::modal::ConfirmChoice::Cancel => self.cancel_remove(),
+            }
+            return EventResult::Handled;
+        }
+        if self
+            .state
+            .lock()
+            .expect("stocks state poisoned")
+            .show_indicator_help
+        {
+            if matches!(key.code, KeyCode::Char('i') | KeyCode::Esc) {
+                self.state
+                    .lock()
+                    .expect("stocks state poisoned")
+                    .show_indicator_help = false;
             }
             return EventResult::Handled;
         }
@@ -1654,6 +1733,13 @@ impl Widget for StocksWidget {
             }
             KeyCode::Char('r') => {
                 self.mark_dirty();
+                EventResult::Handled
+            }
+            KeyCode::Char('i') => {
+                self.state
+                    .lock()
+                    .expect("stocks state poisoned")
+                    .show_indicator_help = true;
                 EventResult::Handled
             }
             // `x` clears the :stock <query> transient selection if any.
@@ -1805,6 +1891,7 @@ impl Widget for StocksWidget {
             ("1-9", "set graph period directly"),
             ("o", "open selected ticker in browser"),
             ("r", "force refresh"),
+            ("i", "explain price graph, EMA, RSI and MACD"),
             ("x", "clear :stock lookup (return to default list)"),
             ("-", "remove the selected ticker (with confirmation)"),
             ("+", "add the :stock lookup ticker to the watchlist"),
