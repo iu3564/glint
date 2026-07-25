@@ -3416,10 +3416,10 @@ fn render_stats_panel(
         theme,
     ));
     if let (Some(h), Some(l)) = (q.day_high, q.day_low) {
-        lines.push(stat_line("Ден. макс/мін", &format!("{h:.2} / {l:.2}"), theme));
+        lines.push(stat_line("День макс/мін", &format!("{h:.2}/{l:.2}"), theme));
     }
     if let (Some(h), Some(l)) = (q.fifty_two_week_high, q.fifty_two_week_low) {
-        lines.push(stat_line("52 тиж. макс/мін", &format!("{h:.2} / {l:.2}"), theme));
+        lines.push(stat_line("52т макс/мін", &format!("{h:.2}/{l:.2}"), theme));
     }
     if let Some(v) = q.volume {
         lines.push(stat_line("Обсяг", &humanize_big(v as f64), theme));
@@ -3818,7 +3818,7 @@ fn format_hm(d: ChronoDuration) -> String {
 
 fn stat_line(label: &str, value: &str, theme: &Theme) -> Line<'static> {
     Line::from(vec![
-        Span::styled(format!("{:<10}", label), theme.text_dim),
+        Span::styled(format!("{label}: "), theme.text_dim),
         Span::styled(value.to_string(), theme.text_plain),
     ])
 }
