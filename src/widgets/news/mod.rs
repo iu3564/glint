@@ -238,12 +238,12 @@ struct NewsState {
 const MAX_SUMMARY_LINES: usize = 6;
 const ALL_TAB_LABEL: &str = "All";
 
-const SUMMARY_SYSTEM_PROMPT: &str = "You are a concise news summarizer. \
-Given a headline and an article body (or short excerpt when the body is \
-unavailable), return a neutral 3-5 sentence summary capturing the key \
-facts and any direct quotes. Do not editorialize, do not add preamble, \
-do not use markdown. If the input is too sparse to summarize faithfully, \
-respond with the single sentence: \"Insufficient content to summarize.\"";
+const SUMMARY_SYSTEM_PROMPT: &str = "Ты кратко и нейтрально пересказываешь новости на русском языке. \
+Получив заголовок и текст статьи (или короткий фрагмент, если полный текст \
+недоступен), верни точный перевод-саммари из 3–5 предложений на русском, \
+сохраняя ключевые факты, числа и прямые цитаты. Не добавляй оценок, вступлений \
+и Markdown. Если данных недостаточно для достоверного пересказа, ответь ровно: \
+\"Недостаточно информации для достоверного пересказа.\"";
 
 const CACHE_KEY_ARTICLES: &str = "articles";
 

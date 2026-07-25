@@ -1071,8 +1071,8 @@ impl StocksWidget {
         // whitespace. Combined with the 1-col explicit gap between
         // panels, that's ~2 visual spaces between the list and the
         // stats column — tight without crowding.
-        const WIDE_LIST_W: u16 = 32;
-        const WIDE_STATS_W: u16 = 30;
+        const WIDE_LIST_W: u16 = 30;
+        const WIDE_STATS_W: u16 = 26;
         const MIN_GRAPH_W: u16 = 24;
         let is_wide = inner.width >= WIDE_LIST_W + MIN_GRAPH_W;
         let with_stats = is_wide && inner.width >= WIDE_LIST_W + WIDE_STATS_W + MIN_GRAPH_W;
@@ -2792,7 +2792,7 @@ fn render_stats_panel(
     let q = match selected.and_then(|s| quotes.get(s)) {
         Some(QuoteState::Ready(q)) => q.as_ref(),
         _ => {
-            let para = Paragraph::new(Span::styled("(no stats)", theme.text_dim))
+            let para = Paragraph::new(Span::styled("(немає даних)", theme.text_dim))
                 .alignment(Alignment::Center);
             frame.render_widget(para, area);
             return;
@@ -2805,33 +2805,33 @@ fn render_stats_panel(
         theme.text_focused,
     )));
     lines.push(Line::from(""));
-    lines.push(stat_line("Price", &format!("{:.2}", q.price), theme));
+    lines.push(stat_line("Ціна", &format!("{:.2}", q.price), theme));
     lines.push(stat_line(
-        "Prev Close",
+        "Попер. закр.",
         &format!("{:.2}", q.previous_close),
         theme,
     ));
     if let (Some(h), Some(l)) = (q.day_high, q.day_low) {
-        lines.push(stat_line("Day H/L", &format!("{h:.2} / {l:.2}"), theme));
+        lines.push(stat_line("Ден. макс/мін", &format!("{h:.2} / {l:.2}"), theme));
     }
     if let (Some(h), Some(l)) = (q.fifty_two_week_high, q.fifty_two_week_low) {
-        lines.push(stat_line("52w H/L", &format!("{h:.2} / {l:.2}"), theme));
+        lines.push(stat_line("52 тиж. макс/мін", &format!("{h:.2} / {l:.2}"), theme));
     }
     if let Some(v) = q.volume {
-        lines.push(stat_line("Volume", &humanize_big(v as f64), theme));
+        lines.push(stat_line("Обсяг", &humanize_big(v as f64), theme));
     }
     if let Some(v) = q.avg_volume {
-        lines.push(stat_line("Avg Vol", &humanize_big(v as f64), theme));
+        lines.push(stat_line("Сер. обсяг", &humanize_big(v as f64), theme));
     }
     lines.push(stat_line(
-        "Mkt Cap",
+        "Капіт.",
         &q.market_cap
             .map(|v| humanize_big(v as f64))
             .unwrap_or_else(|| "—".into()),
         theme,
     ));
     lines.push(stat_line(
-        "Shares",
+        "Акції",
         &q.shares_outstanding
             .map(|v| humanize_big(v as f64))
             .unwrap_or_else(|| "—".into()),
@@ -2844,10 +2844,10 @@ fn render_stats_panel(
         lines.push(stat_line("EPS", &format!("{eps:.2}"), theme));
     }
     if let Some(y) = q.dividend_yield {
-        lines.push(stat_line("Yield", &format!("{:.2}%", y * 100.0), theme));
+        lines.push(stat_line("Дохідність", &format!("{:.2}%", y * 100.0), theme));
     }
     if let Some(b) = q.beta {
-        lines.push(stat_line("Beta", &format!("{b:.2}"), theme));
+        lines.push(stat_line("Бета", &format!("{b:.2}"), theme));
     }
 
     // Market-hours countdown at the bottom of the ticker profile. The
@@ -2889,6 +2889,17 @@ fn render_fundamentals_strip(
     // Collect whichever fundamentals fields are available. Order matches the
     // priority a stock-watcher would want to see at a glance.
     let mut pairs: Vec<(&'static str, String)> = Vec::new();
+    pairs.push(("Ціна", format!("{:.2}", q.price)));
+    pairs.push(("Попер. закр.", format!("{:.2}", q.previous_close)));
+    if let (Some(hi), Some(lo)) = (q.day_high, q.day_low) {
+        pairs.push(("Ден. макс/мін", format!("{hi:.2}/{lo:.2}")));
+    }
+    if let Some(volume) = q.volume {
+        pairs.push(("Обсяг", humanize_big(volume as f64)));
+    }
+    if let Some(shares) = q.shares_outstanding {
+        pairs.push(("Акції", humanize_big(shares as f64)));
+    }
     if let Some(pe) = q.pe_ratio {
         pairs.push(("P/E", format!("{pe:.2}")));
     }
@@ -2896,17 +2907,17 @@ fn render_fundamentals_strip(
         pairs.push(("EPS", format!("{eps:.2}")));
     }
     if let Some(b) = q.beta {
-        pairs.push(("Beta", format!("{b:.2}")));
+        pairs.push(("Бета", format!("{b:.2}")));
     }
     if let (Some(lo), Some(hi)) = (q.fifty_two_week_low, q.fifty_two_week_high) {
-        pairs.push(("52w", format!("{lo:.0}–{hi:.0}")));
+        pairs.push(("52 тиж.", format!("{lo:.0}–{hi:.0}")));
     }
     if let Some(cap) = q.market_cap {
-        pairs.push(("Cap", humanize_big(cap as f64)));
+        pairs.push(("Капіт.", humanize_big(cap as f64)));
     }
     if let Some(y) = q.dividend_yield {
         if y > 0.0 {
-            pairs.push(("Div", format!("{:.2}%", y * 100.0)));
+            pairs.push(("Дохід.", format!("{:.2}%", y * 100.0)));
         }
     }
 
