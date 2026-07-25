@@ -1094,7 +1094,7 @@ impl StocksWidget {
 
     fn render_indicator_help(&self, frame: &mut Frame, parent: Rect) {
         const HELP_W: u16 = 84;
-        const HELP_H: u16 = 16;
+        const HELP_H: u16 = 21;
         if parent.width < 42 || parent.height < 12 {
             return;
         }
@@ -1136,7 +1136,14 @@ impl StocksWidget {
                 Span::raw("— чи прискорюється рух. Блакитна й жовта лінії порівнюють темп."),
             ]),
             Line::from("Зелені/червоні стовпчики — імпульс сильнішає вгору/вниз; ▲/▼ — перетини ліній."),
-            Line::from("«Контекст» поєднує повільний тренд EMA і короткий рух MACD."),
+            Line::from(""),
+            Line::from(Span::styled("Тренд і імпульс — дуже просто", self.theme.text_selected.add_modifier(Modifier::BOLD))),
+            Line::from("Тренд — куди ціна йде повільніше, наче напрям дороги. Його показують EMA."),
+            Line::from("Імпульс — чи ціна зараз «тисне на газ» угору або вниз. Його показує MACD."),
+            Line::from("Тренд ↑ + імпульс ↓: дорога вгору, але зараз коротка пауза або корекція."),
+            Line::from("Тренд ↓ + імпульс ↑: дорога вниз, але зараз короткий відскок."),
+            Line::from("Обидва ↑ або обидва ↓: рух в одному напрямку має більше підтверджень."),
+            Line::from("«Контекст» поєднує повільний тренд EMA і коротший рух MACD."),
             Line::from(Span::styled(
                 "Це підказки для розуміння руху, а не команда купувати чи продавати.",
                 self.theme.text_dim,
