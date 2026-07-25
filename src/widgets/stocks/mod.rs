@@ -90,6 +90,14 @@ pub struct StocksConfig {
     #[serde(default = "default_pad_intraday_to_full_day")]
     pub pad_intraday_to_full_day: bool,
 
+    /// Show RSI(14) below the price graph whenever the widget has enough height.
+    #[serde(default = "default_show_rsi")]
+    pub show_rsi: bool,
+
+    /// Show MACD(12,26,9) below the price graph whenever the widget has enough height.
+    #[serde(default = "default_show_macd")]
+    pub show_macd: bool,
+
     /// Per-widget overrides layered on the app theme.
     #[serde(default)]
     pub colors: ColorScheme,
@@ -104,6 +112,14 @@ fn default_graph_high_low_lines() -> bool {
 }
 
 fn default_pad_intraday_to_full_day() -> bool {
+    true
+}
+
+fn default_show_rsi() -> bool {
+    true
+}
+
+fn default_show_macd() -> bool {
     true
 }
 
@@ -159,6 +175,8 @@ impl Default for StocksConfig {
             horizontal_scroll_period: false,
             graph_high_low_lines: default_graph_high_low_lines(),
             pad_intraday_to_full_day: default_pad_intraday_to_full_day(),
+            show_rsi: default_show_rsi(),
+            show_macd: default_show_macd(),
             colors: ColorScheme::default(),
             shortcuts: Vec::new(),
         }
@@ -1342,8 +1360,8 @@ impl Widget for StocksWidget {
         // whitespace. Combined with the 1-col explicit gap between
         // panels, that's ~2 visual spaces between the list and the
         // stats column — tight without crowding.
-        const WIDE_LIST_W: u16 = 32;
-        const WIDE_STATS_W: u16 = 30;
+        const WIDE_LIST_W: u16 = 30;
+        const WIDE_STATS_W: u16 = 26;
         const MIN_GRAPH_W: u16 = 24;
         let is_wide = body.width >= WIDE_LIST_W + MIN_GRAPH_W;
         let with_stats = is_wide && body.width >= WIDE_LIST_W + WIDE_STATS_W + MIN_GRAPH_W;
@@ -1430,6 +1448,8 @@ impl Widget for StocksWidget {
                 self.period,
                 self.config.graph_high_low_lines,
                 self.config.pad_intraday_to_full_day,
+                self.config.show_rsi,
+                self.config.show_macd,
                 &self.theme,
             );
         } else {
@@ -1469,6 +1489,8 @@ impl Widget for StocksWidget {
                 self.period,
                 self.config.graph_high_low_lines,
                 self.config.pad_intraday_to_full_day,
+                self.config.show_rsi,
+                self.config.show_macd,
                 &self.theme,
             );
         }
@@ -1851,6 +1873,8 @@ fn render_graph_panel(
     period: Period,
     show_high_low_lines: bool,
     pad_intraday_to_full_day: bool,
+    show_rsi: bool,
+    show_macd: bool,
     theme: &Theme,
 ) {
     if area.width < 4 || area.height < 4 {
@@ -1895,7 +1919,6 @@ fn render_graph_panel(
     let header_h = 2u16; // header + toggle
     let xaxis_h = 1u16;
     let plot_top = area.y + header_h;
-    let plot_h = area.height.saturating_sub(header_h + xaxis_h);
 
     // Header.
     let (chg, pct) = period_change(q, period);
@@ -1950,7 +1973,7 @@ fn render_graph_panel(
         },
     );
 
-    if plot_h == 0 || q.intraday.is_empty() {
+    if q.intraday.is_empty() {
         return;
     }
 
@@ -1986,6 +2009,22 @@ fn render_graph_panel(
     if intraday_render.is_empty() {
         return;
     }
+
+    // RSI/MACD live in their own compact panels beneath the price trace. On
+    // short cells we preserve price readability first: hide MACD, then RSI.
+    let available_plot_h = area.height.saturating_sub(header_h + xaxis_h);
+    let (rsi_h, macd_h) = match (show_rsi, show_macd, available_plot_h) {
+        (true, true, h) if h >= 15 => (4, 4),
+        (true, _, h) if h >= 10 => (4, 0),
+        _ => (0, 0),
+    };
+    let indicator_gaps = u16::from(rsi_h > 0) + u16::from(macd_h > 0);
+    let plot_h = available_plot_h.saturating_sub(rsi_h + macd_h + indicator_gaps);
+    if plot_h < 4 {
+        return;
+    }
+    let rsi = (rsi_h > 0).then(|| rsi_14(intraday_render));
+    let macd = (macd_h > 0).then(|| macd_12_26_9(intraday_render));
 
     // Compute y-range from the visible bars.
     let (mut min, mut max) = (f64::INFINITY, f64::NEG_INFINITY);
@@ -2169,10 +2208,30 @@ fn render_graph_panel(
         );
     }
 
+    let mut indicator_y = plot_top + plot_h;
+    if let Some(rsi) = rsi.as_deref() {
+        indicator_y += 1;
+        render_rsi_panel(frame, area.x, indicator_y, Y_LABEL_W, trace_w, rsi_h, rsi);
+        indicator_y += rsi_h;
+    }
+    if let Some((macd_line, signal_line)) = macd.as_ref() {
+        indicator_y += 1;
+        render_macd_panel(
+            frame,
+            area.x,
+            indicator_y,
+            Y_LABEL_W,
+            trace_w,
+            macd_h,
+            macd_line,
+            signal_line,
+        );
+    }
+
     // X-axis labels: a few evenly-spaced markers — content varies by period.
     let xaxis_rect = Rect {
         x: plot_x,
-        y: plot_top + plot_h,
+        y: area.y + area.height - 1,
         width: plot_w,
         height: 1,
     };
@@ -2231,6 +2290,195 @@ fn render_graph_panel(
         Paragraph::new(Span::styled(line, theme.text_dim)),
         xaxis_rect,
     );
+}
+
+/// Wilder RSI with a 14-bar lookback. The warm-up portion is held at 50 so a
+/// short, newly-opened chart still has a neutral and well-defined trace.
+fn rsi_14(values: &[f64]) -> Vec<f64> {
+    const PERIOD: usize = 14;
+    if values.is_empty() {
+        return Vec::new();
+    }
+    let mut out = vec![50.0; values.len()];
+    if values.len() <= PERIOD {
+        return out;
+    }
+    let mut gains = 0.0;
+    let mut losses = 0.0;
+    for pair in values.windows(2).take(PERIOD) {
+        let delta = pair[1] - pair[0];
+        gains += delta.max(0.0);
+        losses += (-delta).max(0.0);
+    }
+    let mut avg_gain = gains / PERIOD as f64;
+    let mut avg_loss = losses / PERIOD as f64;
+    out[PERIOD] = rsi_from_averages(avg_gain, avg_loss);
+    for i in PERIOD + 1..values.len() {
+        let delta = values[i] - values[i - 1];
+        avg_gain = (avg_gain * (PERIOD as f64 - 1.0) + delta.max(0.0)) / PERIOD as f64;
+        avg_loss = (avg_loss * (PERIOD as f64 - 1.0) + (-delta).max(0.0)) / PERIOD as f64;
+        out[i] = rsi_from_averages(avg_gain, avg_loss);
+    }
+    out
+}
+
+fn rsi_from_averages(avg_gain: f64, avg_loss: f64) -> f64 {
+    if avg_loss <= f64::EPSILON {
+        if avg_gain <= f64::EPSILON { 50.0 } else { 100.0 }
+    } else {
+        100.0 - 100.0 / (1.0 + avg_gain / avg_loss)
+    }
+}
+
+fn ema(values: &[f64], period: usize) -> Vec<f64> {
+    let Some(&first) = values.first() else { return Vec::new() };
+    let alpha = 2.0 / (period as f64 + 1.0);
+    let mut out = Vec::with_capacity(values.len());
+    let mut previous = first;
+    for &value in values {
+        previous = alpha * value + (1.0 - alpha) * previous;
+        out.push(previous);
+    }
+    out
+}
+
+/// Standard MACD: fast EMA(12) minus slow EMA(26), plus EMA(9) signal.
+fn macd_12_26_9(values: &[f64]) -> (Vec<f64>, Vec<f64>) {
+    let fast = ema(values, 12);
+    let slow = ema(values, 26);
+    let macd: Vec<f64> = fast.iter().zip(&slow).map(|(f, s)| f - s).collect();
+    let signal = ema(&macd, 9);
+    (macd, signal)
+}
+
+fn render_rsi_panel(
+    frame: &mut Frame,
+    area_x: u16,
+    y: u16,
+    label_w: u16,
+    width: u16,
+    height: u16,
+    rsi: &[f64],
+) {
+    if height == 0 || width == 0 || rsi.is_empty() {
+        return;
+    }
+    let value = rsi.last().copied().unwrap_or(50.0);
+    frame.render_widget(
+        Paragraph::new(Span::styled(
+            format!("RSI {:>4.1}", value),
+            Style::default().fg(Color::Magenta),
+        )),
+        Rect::new(area_x, y, label_w, 1),
+    );
+    render_indicator_guides(frame, area_x + label_w, y, width, height, 0.0, 100.0, &[70.0, 30.0]);
+    render_braille_overlay(
+        frame,
+        area_x + label_w,
+        y,
+        width,
+        height,
+        rsi,
+        0.0,
+        100.0,
+        Color::Magenta,
+    );
+}
+
+fn render_macd_panel(
+    frame: &mut Frame,
+    area_x: u16,
+    y: u16,
+    label_w: u16,
+    width: u16,
+    height: u16,
+    macd: &[f64],
+    signal: &[f64],
+) {
+    if height == 0 || width == 0 || macd.is_empty() || signal.is_empty() {
+        return;
+    }
+    let (mut min, mut max) = series_bounds(macd.iter().chain(signal.iter()).copied());
+    min = min.min(0.0);
+    max = max.max(0.0);
+    if (max - min).abs() < f64::EPSILON {
+        min -= 1.0;
+        max += 1.0;
+    }
+    frame.render_widget(
+        Paragraph::new(Span::styled("MACD", Style::default().fg(Color::Cyan))),
+        Rect::new(area_x, y, label_w, 1),
+    );
+    render_indicator_guides(frame, area_x + label_w, y, width, height, min, max, &[0.0]);
+    render_braille_overlay(frame, area_x + label_w, y, width, height, macd, min, max, Color::Cyan);
+    render_braille_overlay(
+        frame,
+        area_x + label_w,
+        y,
+        width,
+        height,
+        signal,
+        min,
+        max,
+        Color::Yellow,
+    );
+}
+
+fn series_bounds(values: impl Iterator<Item = f64>) -> (f64, f64) {
+    values.fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), value| {
+        (min.min(value), max.max(value))
+    })
+}
+
+fn render_indicator_guides(
+    frame: &mut Frame,
+    x: u16,
+    y: u16,
+    width: u16,
+    height: u16,
+    min: f64,
+    max: f64,
+    guides: &[f64],
+) {
+    let span = (max - min).max(f64::MIN_POSITIVE);
+    for &guide in guides {
+        if !(min..=max).contains(&guide) {
+            continue;
+        }
+        let row = ((1.0 - (guide - min) / span) * (height.saturating_sub(1) as f64)).round() as u16;
+        frame.render_widget(
+            Paragraph::new(Span::styled(
+                "┄".repeat(width as usize),
+                Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+            )),
+            Rect::new(x, y + row.min(height - 1), width, 1),
+        );
+    }
+}
+
+/// Paint only the occupied braille cells so a second indicator line can share
+/// a panel without erasing the first one with blank spaces.
+fn render_braille_overlay(
+    frame: &mut Frame,
+    x: u16,
+    y: u16,
+    width: u16,
+    height: u16,
+    values: &[f64],
+    min: f64,
+    max: f64,
+    color: Color,
+) {
+    for (row, line) in braille::render_series(values, height, width, min, max).iter().enumerate() {
+        for (column, ch) in line.chars().enumerate() {
+            if ch != ' ' {
+                frame.render_widget(
+                    Paragraph::new(Span::styled(ch.to_string(), Style::default().fg(color))),
+                    Rect::new(x + column as u16, y + row as u16, 1, 1),
+                );
+            }
+        }
+    }
 }
 
 

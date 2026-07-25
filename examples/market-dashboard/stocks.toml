@@ -4,3 +4,7 @@ poll_interval_secs = 300
 focused_poll_interval_secs = 60
 default_display_mode = "dollar"
 default_period = "1d"
+# Separate lower panels beneath the price graph. They automatically hide when
+# the terminal cell is too short to keep the price chart readable.
+show_rsi = true
+show_macd = true

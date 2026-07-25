@@ -1046,7 +1046,25 @@ fn expanded_size_shows_fundamentals_strip() {
         &text[..text.len().min(400)]
     );
     assert!(
-        text.contains("Beta"),
-        "fundamentals strip must show 'Beta' at Expanded size"
+        text.contains("Бета"),
+        "fundamentals strip must show 'Бета' at Expanded size"
     );
+}
+
+#[test]
+fn rsi_is_neutral_for_flat_prices_and_rises_with_a_rally() {
+    let flat = rsi_14(&vec![100.0; 30]);
+    assert_eq!(flat.last().copied(), Some(50.0));
+
+    let rising: Vec<f64> = (0..30).map(|i| 100.0 + i as f64).collect();
+    assert!(rsi_14(&rising).last().copied().unwrap() > 90.0);
+}
+
+#[test]
+fn macd_has_parallel_non_empty_lines() {
+    let values: Vec<f64> = (0..60).map(|i| 100.0 + (i as f64 / 4.0).sin() * 5.0).collect();
+    let (macd, signal) = macd_12_26_9(&values);
+    assert_eq!(macd.len(), values.len());
+    assert_eq!(signal.len(), values.len());
+    assert!(macd.iter().any(|value| value.abs() > f64::EPSILON));
 }
