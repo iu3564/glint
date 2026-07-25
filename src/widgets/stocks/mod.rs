@@ -2062,8 +2062,8 @@ fn render_graph_panel(
     // MACD joins only when there is enough room for all three graphs.
     let available_plot_h = area.height.saturating_sub(header_h + xaxis_h);
     let (rsi_h, macd_h) = match (show_rsi, show_macd, available_plot_h) {
-        (true, true, h) if h >= 36 => (10, 8),
-        (true, _, h) if h >= 18 => (10, 0),
+        (true, true, h) if h >= 44 => (16, 8),
+        (true, _, h) if h >= 20 => (14, 0),
         _ => (0, 0),
     };
     let indicator_gaps = u16::from(rsi_h > 0) + u16::from(macd_h > 0);
@@ -2466,7 +2466,7 @@ fn render_rsi_panel(
         width,
         height,
         70.0,
-        "Перекупленість 70",
+        "▲ ПЕРЕКУПЛЕНІСТЬ · 70",
     );
     render_rsi_level_label(
         frame,
@@ -2475,7 +2475,7 @@ fn render_rsi_panel(
         width,
         height,
         30.0,
-        "Перепроданість 30",
+        "▼ ПЕРЕПРОДАНІСТЬ · 30",
     );
 }
 
@@ -2566,7 +2566,12 @@ fn render_rsi_level_label(
     let label_w = label.chars().count() as u16;
     let label_x = x + width.saturating_sub(label_w);
     frame.render_widget(
-        Paragraph::new(Span::styled(label, Style::default().fg(Color::Magenta))),
+        Paragraph::new(Span::styled(
+            label,
+            Style::default()
+                .fg(Color::LightMagenta)
+                .add_modifier(Modifier::BOLD),
+        )),
         Rect::new(label_x, y + row.min(height - 1), width.min(label_w), 1),
     );
 }
