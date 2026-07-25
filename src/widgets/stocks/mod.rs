@@ -2488,7 +2488,46 @@ fn render_indicator_summary(
             spans.push(Span::styled(text, Style::default().fg(color).add_modifier(Modifier::BOLD)));
         }
     }
+    let (context, color) = indicator_context(ema20, ema50, macd);
+    if !spans.is_empty() {
+        spans.push(Span::raw("  ·  "));
+    }
+    spans.push(Span::styled(
+        context,
+        Style::default().fg(color).add_modifier(Modifier::BOLD),
+    ));
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
+}
+
+/// Combines the slower EMA trend with the faster MACD momentum into a compact
+/// market context. It intentionally avoids imperative buy/sell wording.
+fn indicator_context(
+    ema20: Option<&[f64]>,
+    ema50: Option<&[f64]>,
+    macd: Option<&(Vec<f64>, Vec<f64>)>,
+) -> (&'static str, Color) {
+    let trend = match (ema20.and_then(|values| values.last()), ema50.and_then(|values| values.last())) {
+        (Some(fast), Some(slow)) if fast > slow => Some(1),
+        (Some(fast), Some(slow)) if fast < slow => Some(-1),
+        _ => None,
+    };
+    let momentum = match macd {
+        Some((line, signal)) => match (line.last(), signal.last()) {
+            (Some(value), Some(reference)) if value > reference => Some(1),
+            (Some(value), Some(reference)) if value < reference => Some(-1),
+            _ => None,
+        },
+        None => None,
+    };
+    match (trend, momentum) {
+        (Some(1), Some(1)) => ("Контекст: ▲ тренд підтверджено", Color::LightGreen),
+        (Some(-1), Some(-1)) => ("Контекст: ▼ спад підтверджено", Color::LightRed),
+        (Some(1), Some(-1)) => ("Контекст: ↑ тренд · локальна корекція", Color::LightYellow),
+        (Some(-1), Some(1)) => ("Контекст: ↓ спад · короткий відскок", Color::LightYellow),
+        (Some(1), _) => ("Контекст: ↑ висхідний тренд", Color::LightGreen),
+        (Some(-1), _) => ("Контекст: ↓ низхідний тренд", Color::LightRed),
+        _ => ("Контекст: → чекаємо підтвердження", Color::LightYellow),
+    }
 }
 
 fn render_rsi_panel(

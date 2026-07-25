@@ -1080,6 +1080,14 @@ fn ema_tracks_price_with_a_slower_long_period_line() {
 }
 
 #[test]
+fn indicator_context_identifies_an_uptrend_correction() {
+    let macd = (vec![0.2], vec![0.4]);
+    let (text, color) = indicator_context(Some(&[102.0]), Some(&[100.0]), Some(&macd));
+    assert_eq!(text, "Контекст: ↑ тренд · локальна корекція");
+    assert_eq!(color, ratatui::style::Color::LightYellow);
+}
+
+#[test]
 fn mouse_layout_uses_the_same_footer_carve_out_as_rendering() {
     let widget = build_widget(StocksConfig::default());
     // 50×20 outer cell means a 48×18 inner area. Rendering reserves one
