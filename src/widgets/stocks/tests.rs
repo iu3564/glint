@@ -1088,6 +1088,20 @@ fn indicator_context_identifies_an_uptrend_correction() {
 }
 
 #[test]
+fn market_hint_mentions_the_selected_period_and_short_bounce() {
+    let macd = (vec![0.4], vec![0.2]);
+    let (text, color) = market_hint(
+        Period::Week,
+        Some(&[99.0]),
+        Some(&[100.0]),
+        Some(&[46.0]),
+        Some(&macd),
+    );
+    assert_eq!(text, "Коротко 1W: можливий короткий відскок, але тренд ще вниз");
+    assert_eq!(color, ratatui::style::Color::LightYellow);
+}
+
+#[test]
 fn mouse_layout_uses_the_same_footer_carve_out_as_rendering() {
     let widget = build_widget(StocksConfig::default());
     // 50×20 outer cell means a 48×18 inner area. Rendering reserves one

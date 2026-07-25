@@ -1094,7 +1094,7 @@ impl StocksWidget {
 
     fn render_indicator_help(&self, frame: &mut Frame, parent: Rect) {
         const HELP_W: u16 = 84;
-        const HELP_H: u16 = 21;
+        const HELP_H: u16 = 22;
         if parent.width < 42 || parent.height < 12 {
             return;
         }
@@ -1144,6 +1144,7 @@ impl StocksWidget {
             Line::from("Тренд ↓ + імпульс ↑: дорога вниз, але зараз короткий відскок."),
             Line::from("Обидва ↑ або обидва ↓: рух в одному напрямку має більше підтверджень."),
             Line::from("«Контекст» поєднує повільний тренд EMA і коротший рух MACD."),
+            Line::from("«Коротко» — нейтральний підсумок для обраного періоду, не прогноз і не команда діяти."),
             Line::from(Span::styled(
                 "Це підказки для розуміння руху, а не команда купувати чи продавати.",
                 self.theme.text_dim,
@@ -2172,6 +2173,7 @@ fn render_graph_panel(
     render_indicator_summary(
         frame,
         Rect::new(area.x, area.y + 2, area.width, 1),
+        period,
         ema20.as_deref(),
         ema50.as_deref(),
         rsi.as_deref(),
@@ -2534,6 +2536,7 @@ fn macd_12_26_9(values: &[f64]) -> (Vec<f64>, Vec<f64>) {
 fn render_indicator_summary(
     frame: &mut Frame,
     area: Rect,
+    period: Period,
     ema20: Option<&[f64]>,
     ema50: Option<&[f64]>,
     rsi: Option<&[f64]>,
@@ -2590,7 +2593,51 @@ fn render_indicator_summary(
         context,
         Style::default().fg(color).add_modifier(Modifier::BOLD),
     ));
+    let (hint, color) = market_hint(period, ema20, ema50, rsi, macd);
+    spans.push(Span::raw("  ·  "));
+    spans.push(Span::styled(
+        hint,
+        Style::default().fg(color).add_modifier(Modifier::BOLD),
+    ));
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
+}
+
+/// A short, neutral observation based on the currently selected time window.
+/// It helps a reader decide whether the picture is clear enough to watch, but
+/// deliberately does not tell them to buy or sell.
+fn market_hint(
+    period: Period,
+    ema20: Option<&[f64]>,
+    ema50: Option<&[f64]>,
+    rsi: Option<&[f64]>,
+    macd: Option<&(Vec<f64>, Vec<f64>)>,
+) -> (String, Color) {
+    let trend = match (ema20.and_then(|values| values.last()), ema50.and_then(|values| values.last())) {
+        (Some(fast), Some(slow)) if fast > slow => Some(1),
+        (Some(fast), Some(slow)) if fast < slow => Some(-1),
+        _ => None,
+    };
+    let momentum = match macd {
+        Some((line, signal)) => match (line.last(), signal.last()) {
+            (Some(value), Some(reference)) if value > reference => Some(1),
+            (Some(value), Some(reference)) if value < reference => Some(-1),
+            _ => None,
+        },
+        None => None,
+    };
+    let rsi_value = rsi.and_then(|values| values.last()).copied();
+    let (text, color) = match rsi_value {
+        Some(value) if value >= 70.0 => ("рух розігрітий — не поспішайте, дочекайтесь паузи", Color::LightYellow),
+        Some(value) if value <= 30.0 => ("не ловіть відскок навмання — дочекайтесь підтвердження", Color::LightYellow),
+        _ => match (trend, momentum) {
+            (Some(1), Some(1)) => ("рух узгоджений — спостерігайте, не наздоганяйте ціну", Color::LightGreen),
+            (Some(-1), Some(-1)) => ("спад підтверджується — краще зачекати стабілізації", Color::LightRed),
+            (Some(1), Some(-1)) => ("можлива коротка корекція — зачекайте підтвердження", Color::LightYellow),
+            (Some(-1), Some(1)) => ("можливий короткий відскок, але тренд ще вниз", Color::LightYellow),
+            _ => ("індикатори не узгоджені — зачекайте підтвердження", Color::LightYellow),
+        },
+    };
+    (format!("Коротко {}: {text}", period.label()), color)
 }
 
 /// Combines the slower EMA trend with the faster MACD momentum into a compact
