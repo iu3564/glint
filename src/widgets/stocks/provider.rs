@@ -13,6 +13,7 @@
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use chrono::Datelike;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
@@ -20,6 +21,9 @@ use crate::market_data::{
     yahoo::{self, downsample_pairs, ChartError, ChartResponse},
     Period,
 };
+
+const GLDY_USD_SYMBOL: &str = "GLDY-USD";
+const GLDY_COINGECKO_ID: &str = "streamex-gldy";
 
 /// Snapshot of a single ticker, derived from Yahoo Finance's v8/chart endpoint.
 /// Some fields the spec calls out (P/E, EPS, market cap, yield) require a
@@ -171,6 +175,13 @@ impl YahooFinanceProvider {
     }
 
     pub async fn fetch_quote(&self, symbol: &str, period: Period) -> Result<StockQuote> {
+        // GLDY is a recently launched tokenized-security and Yahoo does not
+        // publish a usable chart for it. CoinGecko tracks it under this ID,
+        // so route just this symbol there while every other watchlist item
+        // keeps Yahoo's richer equities/futures metadata.
+        if symbol.eq_ignore_ascii_case(GLDY_USD_SYMBOL) {
+            return self.fetch_coingecko_gldy(period).await;
+        }
         // Chart and summary fetched in parallel — summary failures (common
         // for indices and after crumb expiry) don't fail the whole quote.
         let (chart_res, summary_res) =
@@ -203,6 +214,77 @@ impl YahooFinanceProvider {
             }
         }
         Ok(quote)
+    }
+
+    async fn fetch_coingecko_gldy(&self, period: Period) -> Result<StockQuote> {
+        let days = coingecko_days(period);
+        let url = format!(
+            "https://api.coingecko.com/api/v3/coins/{GLDY_COINGECKO_ID}/market_chart?vs_currency=usd&days={days}"
+        );
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .context("GET CoinGecko GLDY failed")?
+            .error_for_status()
+            .context("CoinGecko GLDY returned non-2xx")?
+            .json::<CoinGeckoMarketChart>()
+            .await
+            .context("failed to deserialize CoinGecko GLDY response")?;
+        let mut points: Vec<(i64, f64)> = response
+            .prices
+            .into_iter()
+            .filter_map(|(timestamp_ms, price)| {
+                price.is_finite().then_some((timestamp_ms / 1_000, price))
+            })
+            .collect();
+        if points.is_empty() {
+            anyhow::bail!("CoinGecko returned no GLDY price history");
+        }
+        points = downsample_pairs(points, 240);
+        let price = points.last().map(|(_, value)| *value).unwrap_or_default();
+        let previous_close = points
+            .iter()
+            .rev()
+            .nth(1)
+            .map(|(_, value)| *value)
+            .unwrap_or(price);
+        let day_high = points.iter().map(|(_, value)| *value).reduce(f64::max);
+        let day_low = points.iter().map(|(_, value)| *value).reduce(f64::min);
+        Ok(StockQuote {
+            symbol: GLDY_USD_SYMBOL.into(),
+            short_name: "Streamex GLDY".into(),
+            price,
+            previous_close,
+            day_high,
+            day_low,
+            fifty_two_week_high: day_high,
+            fifty_two_week_low: day_low,
+            volume: None,
+            avg_volume: None,
+            market_cap: None,
+            shares_outstanding: None,
+            pe_ratio: None,
+            eps: None,
+            dividend_yield: None,
+            beta: None,
+            currency: Some("USD".into()),
+            intraday: points.iter().map(|(_, value)| *value).collect(),
+            intraday_timestamps: points.iter().map(|(timestamp, _)| *timestamp).collect(),
+            regular_session_start_ts: None,
+            regular_session_end_ts: None,
+            previous_session_start_ts: None,
+            previous_session_end_ts: None,
+            fetched_at: chrono::Local::now(),
+            post_market_price: None,
+            post_market_change: None,
+            post_market_change_percent: None,
+            pre_market_price: None,
+            pre_market_change: None,
+            pre_market_change_percent: None,
+            market_state: Some("REGULAR".into()),
+        })
     }
 
     async fn fetch_chart(&self, symbol: &str, period: Period) -> Result<StockQuote> {
@@ -361,6 +443,23 @@ impl YahooFinanceProvider {
             pre_market_change_percent: meta.pre_market_change_percent,
             market_state: meta.market_state,
         })
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct CoinGeckoMarketChart {
+    prices: Vec<(i64, f64)>,
+}
+
+fn coingecko_days(period: Period) -> String {
+    match period {
+        Period::Day => "1".into(),
+        Period::Week => "7".into(),
+        Period::Month => "30".into(),
+        Period::SixMonth => "180".into(),
+        Period::YearToDate => chrono::Local::now().ordinal().max(1).to_string(),
+        Period::Year => "365".into(),
+        Period::ThreeYear | Period::FiveYear | Period::TenYear => "max".into(),
     }
 }
 
@@ -638,5 +737,14 @@ mod tests {
             market_state: None,
         };
         assert_eq!(q.change_pct(), 0.0);
+    }
+
+    #[test]
+    fn coingecko_periods_request_appropriate_history_windows() {
+        assert_eq!(coingecko_days(Period::Day), "1");
+        assert_eq!(coingecko_days(Period::Week), "7");
+        assert_eq!(coingecko_days(Period::SixMonth), "180");
+        assert_eq!(coingecko_days(Period::Year), "365");
+        assert_eq!(coingecko_days(Period::FiveYear), "max");
     }
 }
