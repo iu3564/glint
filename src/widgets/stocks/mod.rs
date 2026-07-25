@@ -1083,6 +1083,25 @@ impl StocksWidget {
     /// Compute the same panel rects `render` uses so click handlers can map
     /// coordinates back to a target panel.
     fn compute_layout(&self, inner: Rect) -> StocksPanels {
+        // Keep this pre-processing in lock-step with `render`: the footer
+        // and optional fundamentals strip are not interactive, so neither
+        // may participate in hit testing. Previously mouse coordinates were
+        // split using the full inner cell while rendering used the shortened
+        // body, shifting portrait targets down by a row.
+        let footer_h = u16::from(inner.height >= 2);
+        let body = Rect {
+            height: inner.height.saturating_sub(footer_h),
+            ..inner
+        };
+        // `inner` is the content area inside the one-cell border. Recreate
+        // the outer dimensions that `render` passes to ViewTier.
+        let outer = Rect {
+            width: inner.width.saturating_add(2),
+            height: inner.height.saturating_add(2),
+            ..inner
+        };
+        let tier = ViewTier::from_rect(outer);
+
         // List column is sized to exactly fit the widest row content
         // (prefix + 7-col symbol + 10-col price + 2-col gap + 10-col
         // change = 31 chars), leaving a single col of trailing
@@ -1092,8 +1111,21 @@ impl StocksWidget {
         const WIDE_LIST_W: u16 = 30;
         const WIDE_STATS_W: u16 = 26;
         const MIN_GRAPH_W: u16 = 24;
-        let is_wide = inner.width >= WIDE_LIST_W + MIN_GRAPH_W;
-        let with_stats = is_wide && inner.width >= WIDE_LIST_W + WIDE_STATS_W + MIN_GRAPH_W;
+        let is_wide = body.width >= WIDE_LIST_W + MIN_GRAPH_W;
+        let with_stats = is_wide && body.width >= WIDE_LIST_W + WIDE_STATS_W + MIN_GRAPH_W;
+        const FUND_STRIP_H: u16 = 2;
+        let show_fund_strip = tier >= ViewTier::Expanded
+            && is_wide
+            && !with_stats
+            && body.height > FUND_STRIP_H + 4;
+        let body = if show_fund_strip {
+            Rect {
+                height: body.height - FUND_STRIP_H,
+                ..body
+            }
+        } else {
+            body
+        };
         if is_wide {
             let mut constraints: Vec<Constraint> =
                 vec![Constraint::Length(WIDE_LIST_W), Constraint::Length(1)];
@@ -1105,7 +1137,7 @@ impl StocksWidget {
             let cols = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints(constraints)
-                .split(inner);
+                .split(body);
             let (stats_area, graph_area) = if with_stats {
                 (Some(cols[2]), Some(cols[4]))
             } else {
@@ -1117,7 +1149,7 @@ impl StocksWidget {
                 graph_area,
             }
         } else {
-            let list_h = ((inner.height as f32) * 0.55).round() as u16;
+            let list_h = ((body.height as f32) * 0.55).round() as u16;
             let rows = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
@@ -1125,7 +1157,7 @@ impl StocksWidget {
                     Constraint::Length(1),
                     Constraint::Fill(1),
                 ])
-                .split(inner);
+                .split(body);
             StocksPanels {
                 list_area: Some(rows[0]),
                 stats_area: None,

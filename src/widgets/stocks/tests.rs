@@ -1068,3 +1068,15 @@ fn macd_has_parallel_non_empty_lines() {
     assert_eq!(signal.len(), values.len());
     assert!(macd.iter().any(|value| value.abs() > f64::EPSILON));
 }
+
+#[test]
+fn mouse_layout_uses_the_same_footer_carve_out_as_rendering() {
+    let widget = build_widget(StocksConfig::default());
+    // 50×20 outer cell means a 48×18 inner area. Rendering reserves one
+    // footer row, then gives 55% of the remaining 17 rows to the list.
+    let layout = widget.compute_layout(ratatui::layout::Rect::new(1, 1, 48, 18));
+    let list = layout.list_area.unwrap();
+    let graph = layout.graph_area.unwrap();
+    assert_eq!(list.height, 9);
+    assert_eq!(graph.y, 11, "graph hitbox must begin where it is drawn");
+}
