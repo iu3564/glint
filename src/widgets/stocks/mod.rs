@@ -39,7 +39,7 @@ use crate::ui::chart::braille;
 use crate::ui::status::{live_value, TimedFeedback};
 use crate::ui::{apply_title_row, MetadataEmphasis};
 
-use super::{AppContext, EventResult, ViewTier, Widget};
+use super::{AppContext, EventResult, Widget};
 
 use provider::{StockQuote, YahooFinanceProvider};
 
@@ -1162,63 +1162,27 @@ impl StocksWidget {
             height: inner.height.saturating_sub(footer_h),
             ..inner
         };
-        // `inner` is the content area inside the one-cell border. Recreate
-        // the outer dimensions that `render` passes to ViewTier.
-        let outer = Rect {
-            width: inner.width.saturating_add(2),
-            height: inner.height.saturating_add(2),
-            ..inner
-        };
-        let tier = ViewTier::from_rect(outer);
-
-        // List column is sized to exactly fit the widest row content
-        // (prefix + 7-col symbol + 10-col price + 2-col gap + 10-col
-        // change = 31 chars), leaving a single col of trailing
-        // whitespace. Combined with the 1-col explicit gap between
-        // panels, that's ~2 visual spaces between the list and the
-        // stats column — tight without crowding.
+        // Keep the watchlist as one compact left rail. The selected asset's
+        // details live directly below it instead of consuming a permanent
+        // second column and leaving an empty block underneath.
         const WIDE_LIST_W: u16 = 32;
         const PANEL_GAP: u16 = 2;
-        // Ukrainian labels plus a two-sided price range such as
-        // `День макс/мін: 209.83/195.77` need more than 26 cells.
-        // Keep the stats column wide enough that its numbers cannot run
-        // underneath the chart's y-axis labels.
-        const WIDE_STATS_W: u16 = 32;
         const MIN_GRAPH_W: u16 = 24;
         let is_wide = body.width >= WIDE_LIST_W + MIN_GRAPH_W;
-        let with_stats = is_wide && body.width >= WIDE_LIST_W + WIDE_STATS_W + MIN_GRAPH_W;
-        const FUND_STRIP_H: u16 = 2;
-        let show_fund_strip =
-            tier >= ViewTier::Expanded && is_wide && !with_stats && body.height > FUND_STRIP_H + 4;
-        let body = if show_fund_strip {
-            Rect {
-                height: body.height - FUND_STRIP_H,
-                ..body
-            }
-        } else {
-            body
-        };
         if is_wide {
-            let mut constraints: Vec<Constraint> =
-            vec![Constraint::Length(WIDE_LIST_W), Constraint::Length(PANEL_GAP)];
-            if with_stats {
-                constraints.push(Constraint::Length(WIDE_STATS_W));
-                constraints.push(Constraint::Length(PANEL_GAP));
-            }
-            constraints.push(Constraint::Fill(1));
             let cols = Layout::default()
                 .direction(Direction::Horizontal)
-                .constraints(constraints)
+                .constraints([
+                    Constraint::Length(WIDE_LIST_W),
+                    Constraint::Length(PANEL_GAP),
+                    Constraint::Fill(1),
+                ])
                 .split(body);
-            let (stats_area, graph_area) = if with_stats {
-                (Some(cols[2]), Some(cols[4]))
-            } else {
-                (None, Some(cols[2]))
-            };
+            let (list_area, stats_area) = split_wide_left_rail(cols[0]);
             StocksPanels {
-                list_area: Some(cols[0]),
+                list_area: Some(list_area),
                 stats_area,
-                graph_area,
+                graph_area: Some(cols[2]),
             }
         } else {
             let list_h = ((body.height as f32) * 0.55).round() as u16;
@@ -1244,6 +1208,27 @@ struct StocksPanels {
     #[allow(dead_code)] // referenced by future "click stats panel" follow-up.
     stats_area: Option<Rect>,
     graph_area: Option<Rect>,
+}
+
+/// Split the compact left rail into a scrollable watchlist and the selected
+/// asset's details. This removes the dead lower half of the former side-by-side
+/// stats column while preserving both kinds of information.
+fn split_wide_left_rail(area: Rect) -> (Rect, Option<Rect>) {
+    const LIST_H: u16 = 15;
+    const GAP_H: u16 = 1;
+    const MIN_STATS_H: u16 = 4;
+    if area.height <= LIST_H + GAP_H + MIN_STATS_H {
+        return (area, None);
+    }
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(LIST_H),
+            Constraint::Length(GAP_H),
+            Constraint::Fill(1),
+        ])
+        .split(area);
+    (rows[0], Some(rows[2]))
 }
 
 /// Maps a click row inside the list panel to the ticker index, accounting
@@ -1448,73 +1433,27 @@ impl Widget for StocksWidget {
             height: inner.height - footer_h,
         };
 
-        // Size-driven tier — used to gate the Expanded fundamentals strip.
-        let tier = ViewTier::from_rect(area);
-
-        // Adaptive layout: in landscape mode (wide), list | stats | graph
-        // run horizontally — list + stats get their full width first, graph
-        // fills whatever's left. In portrait mode (narrow), they stack
-        // vertically: list on top, graph on the bottom.
-        // List column is sized to exactly fit the widest row content
-        // (prefix + 7-col symbol + 10-col price + 2-col gap + 10-col
-        // change = 31 chars), leaving a single col of trailing
-        // whitespace. Combined with the 1-col explicit gap between
-        // panels, that's ~2 visual spaces between the list and the
-        // stats column — tight without crowding.
+        // Adaptive layout: in landscape mode (wide), a compact left rail
+        // holds the list above the selected asset's details, while the graph
+        // takes all remaining width. Portrait mode keeps the vertical stack.
         const WIDE_LIST_W: u16 = 32;
         const PANEL_GAP: u16 = 2;
-        // Must match `compute_layout` so mouse hit testing and rendering
-        // agree on where the graph begins.
-        const WIDE_STATS_W: u16 = 32;
         const MIN_GRAPH_W: u16 = 24;
         let is_wide = body.width >= WIDE_LIST_W + MIN_GRAPH_W;
-        let with_stats = is_wide && body.width >= WIDE_LIST_W + WIDE_STATS_W + MIN_GRAPH_W;
-
-        // At Expanded/Full tier in wide-but-no-stats-column mode, carve 2
-        // rows off the bottom of the layout body for a compact fundamentals
-        // summary strip. The existing stats panel (which fires when
-        // `with_stats` is true) already renders fundamentals for wider cells.
-        const FUND_STRIP_H: u16 = 2;
-        let show_fund_strip =
-            tier >= ViewTier::Expanded && is_wide && !with_stats && body.height > FUND_STRIP_H + 4;
-        let fund_strip_area = if show_fund_strip {
-            Some(Rect {
-                y: body.y + body.height - FUND_STRIP_H,
-                height: FUND_STRIP_H,
-                ..body
-            })
-        } else {
-            None
-        };
-        // Shadow body so the main layout doesn't clobber the fundamentals rows.
-        let body = if show_fund_strip {
-            Rect {
-                height: body.height - FUND_STRIP_H,
-                ..body
-            }
-        } else {
-            body
-        };
+        let fund_strip_area: Option<Rect> = None;
 
         // 1-col gaps between panels so they don't visually run together.
         if is_wide {
-            let mut constraints: Vec<Constraint> =
-            vec![Constraint::Length(WIDE_LIST_W), Constraint::Length(PANEL_GAP)];
-            if with_stats {
-                constraints.push(Constraint::Length(WIDE_STATS_W));
-                constraints.push(Constraint::Length(PANEL_GAP));
-            }
-            constraints.push(Constraint::Fill(1));
             let cols = Layout::default()
                 .direction(Direction::Horizontal)
-                .constraints(constraints)
+                .constraints([
+                    Constraint::Length(WIDE_LIST_W),
+                    Constraint::Length(PANEL_GAP),
+                    Constraint::Fill(1),
+                ])
                 .split(body);
-            let list_area = cols[0];
-            let (stats_area, graph_area) = if with_stats {
-                (Some(cols[2]), cols[4])
-            } else {
-                (None, cols[2])
-            };
+            let (list_area, stats_area) = split_wide_left_rail(cols[0]);
+            let graph_area = cols[2];
             let (sel, cur_scroll) = {
                 let st = self.state.lock().unwrap();
                 (st.selected, st.list_scroll)
