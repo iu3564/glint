@@ -2105,14 +2105,14 @@ fn render_graph_panel(
                 q.reference_label.as_deref().unwrap_or("довідкова історія")
             ),
             Style::default()
-                .fg(Color::Cyan)
+                .fg(Color::LightBlue)
                 .add_modifier(Modifier::BOLD),
         ));
         header_spans.push(Span::raw("  "));
         header_spans.push(Span::styled(
             "● OKX",
             Style::default()
-                .fg(Color::Yellow)
+                .fg(Color::LightGreen)
                 .add_modifier(Modifier::BOLD),
         ));
     }
@@ -2254,7 +2254,10 @@ fn render_graph_panel(
             height: 1,
         };
         let label = format!("{:>6.2} ", v);
-        frame.render_widget(Paragraph::new(Span::styled(label, theme.text_dim)), rect);
+        frame.render_widget(
+            Paragraph::new(Span::styled(label, Style::default().fg(Color::LightBlue))),
+            rect,
+        );
     }
 
     // === Trace rendering ===
@@ -2317,7 +2320,7 @@ fn render_graph_panel(
                 row.clone(),
                 if use_reference {
                     Style::default()
-                        .fg(Color::Cyan)
+                        .fg(Color::LightBlue)
                         .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(if chg >= 0.0 {
@@ -2356,7 +2359,11 @@ fn render_graph_panel(
                 end,
                 plot_min,
                 plot_max,
-                Color::Yellow,
+                if chg >= 0.0 {
+                    Color::LightGreen
+                } else {
+                    Color::LightRed
+                },
             );
         }
     }
@@ -2423,7 +2430,10 @@ fn render_graph_panel(
     let anchor_value = if matches!(period, Period::Day) {
         q.previous_close
     } else {
-        q.intraday.first().copied().unwrap_or(q.previous_close)
+        background_render
+            .first()
+            .copied()
+            .unwrap_or(q.previous_close)
     };
     draw_reference_line(
         frame,
@@ -2436,9 +2446,7 @@ fn render_graph_panel(
         &rows,
         anchor_value,
         '┄',
-        Style::default()
-            .fg(Color::Yellow)
-            .add_modifier(Modifier::DIM),
+        Style::default().fg(Color::DarkGray),
     );
 
     if show_high_low_lines && !matches!(period, Period::Day) {
@@ -2517,7 +2525,7 @@ fn render_graph_panel(
         let cols: Vec<(usize, &str)> = annotations
             .iter()
             .map(|ann| {
-                let n = timestamps_render.len();
+                let n = background_timestamps.len();
                 let frac = if n <= 1 {
                     0.0
                 } else {
@@ -2533,7 +2541,12 @@ fn render_graph_panel(
         lay_out_x_axis_labels_at_cols(&cols, plot_w as usize)
     };
     frame.render_widget(
-        Paragraph::new(Span::styled(line, theme.text_dim)),
+        Paragraph::new(Span::styled(
+            line,
+            Style::default()
+                .fg(Color::LightCyan)
+                .add_modifier(Modifier::BOLD),
+        )),
         xaxis_rect,
     );
 }
