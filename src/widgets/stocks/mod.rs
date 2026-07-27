@@ -1178,7 +1178,11 @@ impl StocksWidget {
         // panels, that's ~2 visual spaces between the list and the
         // stats column — tight without crowding.
         const WIDE_LIST_W: u16 = 32;
-        const WIDE_STATS_W: u16 = 26;
+        // Ukrainian labels plus a two-sided price range such as
+        // `День макс/мін: 209.83/195.77` need more than 26 cells.
+        // Keep the stats column wide enough that its numbers cannot run
+        // underneath the chart's y-axis labels.
+        const WIDE_STATS_W: u16 = 32;
         const MIN_GRAPH_W: u16 = 24;
         let is_wide = body.width >= WIDE_LIST_W + MIN_GRAPH_W;
         let with_stats = is_wide && body.width >= WIDE_LIST_W + WIDE_STATS_W + MIN_GRAPH_W;
@@ -1457,7 +1461,9 @@ impl Widget for StocksWidget {
         // panels, that's ~2 visual spaces between the list and the
         // stats column — tight without crowding.
         const WIDE_LIST_W: u16 = 32;
-        const WIDE_STATS_W: u16 = 26;
+        // Must match `compute_layout` so mouse hit testing and rendering
+        // agree on where the graph begins.
+        const WIDE_STATS_W: u16 = 32;
         const MIN_GRAPH_W: u16 = 24;
         let is_wide = body.width >= WIDE_LIST_W + MIN_GRAPH_W;
         let with_stats = is_wide && body.width >= WIDE_LIST_W + WIDE_STATS_W + MIN_GRAPH_W;
