@@ -457,35 +457,20 @@ impl YahooFinanceProvider {
         })
     }
 
-    /// Real spot-market candles for xStocks that trade against USDT.  This is
-    /// deliberately preferred over a USD oracle: the displayed chart then
-    /// matches the instrument the user can actually trade.
+    /// Real OKX spot-market candles. This deliberately avoids a USD oracle:
+    /// the displayed chart matches the exact USDT instrument the user trades.
     async fn fetch_xstock_usdt(
         &self,
         symbol: &str,
         asset: XStockUsdtAsset,
         period: Period,
     ) -> Result<StockQuote> {
-        let (url, newest_first) = match asset.venue {
-            XStockVenue::Gate => (
-                format!(
-                    "https://api.gateio.ws/api/v4/spot/candlesticks?currency_pair={}&interval={}&limit={}",
-                    asset.pair,
-                    xstock_gate_interval(period),
-                    xstock_candle_limit(period),
-                ),
-                false,
-            ),
-            XStockVenue::Bybit => (
-                format!(
-                    "https://api.bybit.com/v5/market/kline?category=spot&symbol={}&interval={}&limit={}",
-                    asset.pair,
-                    xstock_bybit_interval(period),
-                    xstock_candle_limit(period),
-                ),
-                true,
-            ),
-        };
+        let url = format!(
+            "https://www.okx.com/api/v5/market/history-candles?instId={}&bar={}&limit={}",
+            asset.pair,
+            okx_candle_interval(period),
+            xstock_candle_limit(period),
+        );
         let body = self
             .client
             .get(&url)
@@ -496,31 +481,17 @@ impl YahooFinanceProvider {
             .with_context(|| format!("{symbol} USDT candles returned non-2xx"))?
             .text()
             .await?;
-        let mut points = match asset.venue {
-            XStockVenue::Gate => serde_json::from_str::<Vec<Vec<String>>>(&body)?
-                .into_iter()
-                .filter_map(|row| {
-                    Some((
-                        row.first()?.parse::<i64>().ok()?,
-                        row.get(2)?.parse::<f64>().ok()?,
-                    ))
-                })
-                .collect::<Vec<_>>(),
-            XStockVenue::Bybit => serde_json::from_str::<BybitKlines>(&body)?
-                .result
-                .list
-                .into_iter()
-                .filter_map(|row| {
-                    Some((
-                        row.first()?.parse::<i64>().ok()? / 1_000,
-                        row.get(4)?.parse::<f64>().ok()?,
-                    ))
-                })
-                .collect::<Vec<_>>(),
-        };
-        if newest_first {
-            points.reverse();
-        }
+        let mut points = serde_json::from_str::<OkxCandles>(&body)?
+            .data
+            .into_iter()
+            .filter_map(|row| {
+                Some((
+                    row.first()?.parse::<i64>().ok()? / 1_000,
+                    row.get(4)?.parse::<f64>().ok()?,
+                ))
+            })
+            .collect::<Vec<_>>();
+        points.reverse(); // OKX returns newest candle first.
         points.retain(|(_, price)| price.is_finite());
         if points.is_empty() {
             anyhow::bail!("{symbol} returned no USDT price history");
@@ -575,42 +546,24 @@ impl YahooFinanceProvider {
 struct XStockUsdtAsset {
     pair: &'static str,
     name: &'static str,
-    venue: XStockVenue,
-}
-#[derive(Clone, Copy)]
-enum XStockVenue {
-    Gate,
-    Bybit,
 }
 #[derive(Deserialize)]
-struct BybitKlines {
-    result: BybitKlineResult,
-}
-#[derive(Deserialize)]
-struct BybitKlineResult {
-    list: Vec<Vec<String>>,
+struct OkxCandles {
+    data: Vec<Vec<String>>,
 }
 
 fn usdt_spot_asset(symbol: &str) -> Option<XStockUsdtAsset> {
-    let gate = |pair, name| XStockUsdtAsset {
-        pair,
-        name,
-        venue: XStockVenue::Gate,
-    };
-    let bybit = |pair, name| XStockUsdtAsset {
-        pair,
-        name,
-        venue: XStockVenue::Bybit,
-    };
+    let okx = |pair, name| XStockUsdtAsset { pair, name };
     match symbol.to_ascii_uppercase().as_str() {
-        "PAXG-USDT" => Some(gate("PAXG_USDT", "Pax Gold")),
-        "BTC-USDT" => Some(gate("BTC_USDT", "Bitcoin")),
-        "SPYX-USDT" => Some(gate("SPYX_USDT", "SP500 xStock")),
-        "AAPLX-USDT" => Some(gate("AAPLX_USDT", "Apple xStock")),
-        "NVDAX-USDT" => Some(gate("NVDAX_USDT", "NVIDIA xStock")),
-        "AMZNX-USDT" => Some(gate("AMZNX_USDT", "Amazon xStock")),
-        "VTIX-USDT" => Some(gate("VTIX_USDT", "Vanguard Total Market xStock")),
-        "SPCXX-USDT" => Some(bybit("SPCXXUSDT", "SpaceX xStock")),
+        "PAXG-USDT" => Some(okx("PAXG-USDT", "Pax Gold")),
+        "BTC-USDT" => Some(okx("BTC-USDT", "Bitcoin")),
+        "XSPY-USDT" => Some(okx("XSPY-USDT", "S&P 500 tokenized ETF")),
+        "XAAPL-USDT" => Some(okx("XAAPL-USDT", "Apple tokenized stock")),
+        "XNVDA-USDT" => Some(okx("XNVDA-USDT", "NVIDIA tokenized stock")),
+        "XAMZN-USDT" => Some(okx("XAMZN-USDT", "Amazon tokenized stock")),
+        "XSPCX-USDT" => Some(okx("XSPCX-USDT", "SpaceX tokenized stock")),
+        "XQQQ-USDT" => Some(okx("XQQQ-USDT", "Nasdaq-100 tokenized ETF")),
+        "XIWM-USDT" => Some(okx("XIWM-USDT", "Russell 2000 tokenized ETF")),
         _ => None,
     }
 }
@@ -623,18 +576,11 @@ fn xstock_candle_limit(period: Period) -> u16 {
         _ => 365,
     }
 }
-fn xstock_gate_interval(period: Period) -> &'static str {
+fn okx_candle_interval(period: Period) -> &'static str {
     match period {
         Period::Day => "5m",
         Period::Week | Period::Month => "1h",
-        _ => "1d",
-    }
-}
-fn xstock_bybit_interval(period: Period) -> &'static str {
-    match period {
-        Period::Day => "5",
-        Period::Week | Period::Month => "60",
-        _ => "D",
+        _ => "1D",
     }
 }
 
@@ -973,16 +919,14 @@ mod tests {
     }
 
     #[test]
-    fn xstock_usdt_registry_uses_real_spot_pairs() {
-        let vti = usdt_spot_asset("VTIx-USDT").expect("VTIx USDT pair");
-        assert_eq!(vti.pair, "VTIX_USDT");
-        assert!(matches!(vti.venue, XStockVenue::Gate));
+    fn usdt_registry_uses_the_exact_okx_instruments() {
+        let qqq = usdt_spot_asset("XQQQ-USDT").expect("XQQQ USDT pair");
+        assert_eq!(qqq.pair, "XQQQ-USDT");
 
-        let spacex = usdt_spot_asset("SPCXx-USDT").expect("SpaceX USDT pair");
-        assert_eq!(spacex.pair, "SPCXXUSDT");
-        assert!(matches!(spacex.venue, XStockVenue::Bybit));
-        assert!(usdt_spot_asset("MSFTx-USDT").is_none());
-        assert_eq!(usdt_spot_asset("PAXG-USDT").unwrap().pair, "PAXG_USDT");
-        assert_eq!(usdt_spot_asset("BTC-USDT").unwrap().pair, "BTC_USDT");
+        let spacex = usdt_spot_asset("XSPCX-USDT").expect("SpaceX USDT pair");
+        assert_eq!(spacex.pair, "XSPCX-USDT");
+        assert!(usdt_spot_asset("VTIx-USDT").is_none());
+        assert_eq!(usdt_spot_asset("PAXG-USDT").unwrap().pair, "PAXG-USDT");
+        assert_eq!(usdt_spot_asset("BTC-USDT").unwrap().pair, "BTC-USDT");
     }
 }

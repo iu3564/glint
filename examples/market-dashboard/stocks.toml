@@ -1,5 +1,5 @@
 indices = []
-watchlist = ["GC=F", "PAXG-USDT", "SPYx-USDT", "AAPLx-USDT", "NVDAx-USDT", "AMZNx-USDT", "SPCXx-USDT", "VTIx-USDT", "BTC-USDT", "UAH=X", "EURUAH=X"]
+watchlist = ["GC=F", "PAXG-USDT", "XSPY-USDT", "XAAPL-USDT", "XNVDA-USDT", "XAMZN-USDT", "XSPCX-USDT", "XQQQ-USDT", "XIWM-USDT", "BTC-USDT", "UAH=X", "EURUAH=X"]
 poll_interval_secs = 300
 focused_poll_interval_secs = 60
 default_display_mode = "dollar"
