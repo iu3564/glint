@@ -2089,23 +2089,32 @@ fn render_graph_panel(
             ));
         }
     }
+    let has_reference_layer =
+        !matches!(period, Period::Day | Period::Week) && !q.reference_history.is_empty();
     if show_ema {
         header_spans.push(Span::raw("  "));
         header_spans.push(Span::styled("EMA20", Style::default().fg(Color::Cyan)));
         header_spans.push(Span::raw("  "));
         header_spans.push(Span::styled("EMA50", Style::default().fg(Color::Yellow)));
     }
-    if !matches!(period, Period::Day | Period::Week) && !q.reference_history.is_empty() {
+    if has_reference_layer {
         header_spans.push(Span::raw("  "));
         header_spans.push(Span::styled(
             format!(
                 "┄ {}",
                 q.reference_label.as_deref().unwrap_or("довідкова історія")
             ),
-            theme.text_dim,
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
         ));
         header_spans.push(Span::raw("  "));
-        header_spans.push(Span::styled("● OKX", Style::default().fg(Color::Cyan)));
+        header_spans.push(Span::styled(
+            "● OKX",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ));
     }
     let header = Line::from(header_spans);
     frame.render_widget(
@@ -2181,10 +2190,15 @@ fn render_graph_panel(
     if plot_h < 4 {
         return;
     }
-    let rsi = (rsi_h > 0).then(|| rsi_14(intraday_render));
-    let macd = (macd_h > 0).then(|| macd_12_26_9(intraday_render));
-    let ema20 = show_ema.then(|| ema(intraday_render, 20));
-    let ema50 = show_ema.then(|| ema(intraday_render, 50));
+    let indicator_series = if use_reference {
+        background_render
+    } else {
+        intraday_render
+    };
+    let rsi = (rsi_h > 0).then(|| rsi_14(indicator_series));
+    let macd = (macd_h > 0).then(|| macd_12_26_9(indicator_series));
+    let ema20 = show_ema.then(|| ema(indicator_series, 20));
+    let ema50 = show_ema.then(|| ema(indicator_series, 50));
     render_indicator_summary(
         frame,
         Rect::new(area.x, area.y + 2, area.width, 1),
@@ -2303,8 +2317,8 @@ fn render_graph_panel(
                 row.clone(),
                 if use_reference {
                     Style::default()
-                        .fg(Color::DarkGray)
-                        .add_modifier(Modifier::DIM)
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(if chg >= 0.0 {
                         Color::LightGreen
@@ -2342,11 +2356,7 @@ fn render_graph_panel(
                 end,
                 plot_min,
                 plot_max,
-                if chg >= 0.0 {
-                    Color::LightGreen
-                } else {
-                    Color::LightRed
-                },
+                Color::Yellow,
             );
         }
     }
