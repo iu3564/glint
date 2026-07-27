@@ -300,6 +300,21 @@ fn list_row_includes_arrow_for_selected_only() {
     assert!(!un_text.contains("▸"));
 }
 
+#[test]
+fn list_change_keeps_large_period_moves_inside_its_column() {
+    assert_eq!(
+        format_list_change('▲', DisplayMode::Dollar, 123.45, 0.0),
+        "▲ +123.45"
+    );
+    let bitcoin_move = format_list_change('▲', DisplayMode::Dollar, 63_778.0, 0.0);
+    assert_eq!(bitcoin_move, "▲ +63.8K");
+    assert!(bitcoin_move.chars().count() <= 10);
+
+    let large_percent = format_list_change('▲', DisplayMode::Percent, 0.0, 1_234.56);
+    assert_eq!(large_percent, "▲ +1235%");
+    assert!(large_percent.chars().count() <= 10);
+}
+
 /// Construct a `DateTime<Utc>` for a given America/New_York local
 /// timestamp. Centralized so each market-hours test reads cleanly.
 fn et_to_utc(y: i32, m: u32, d: u32, hour: u32, minute: u32) -> chrono::DateTime<Utc> {

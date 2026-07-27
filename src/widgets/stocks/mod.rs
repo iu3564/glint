@@ -1178,6 +1178,7 @@ impl StocksWidget {
         // panels, that's ~2 visual spaces between the list and the
         // stats column — tight without crowding.
         const WIDE_LIST_W: u16 = 32;
+        const PANEL_GAP: u16 = 2;
         // Ukrainian labels plus a two-sided price range such as
         // `День макс/мін: 209.83/195.77` need more than 26 cells.
         // Keep the stats column wide enough that its numbers cannot run
@@ -1199,10 +1200,10 @@ impl StocksWidget {
         };
         if is_wide {
             let mut constraints: Vec<Constraint> =
-                vec![Constraint::Length(WIDE_LIST_W), Constraint::Length(1)];
+            vec![Constraint::Length(WIDE_LIST_W), Constraint::Length(PANEL_GAP)];
             if with_stats {
                 constraints.push(Constraint::Length(WIDE_STATS_W));
-                constraints.push(Constraint::Length(1));
+                constraints.push(Constraint::Length(PANEL_GAP));
             }
             constraints.push(Constraint::Fill(1));
             let cols = Layout::default()
@@ -1461,6 +1462,7 @@ impl Widget for StocksWidget {
         // panels, that's ~2 visual spaces between the list and the
         // stats column — tight without crowding.
         const WIDE_LIST_W: u16 = 32;
+        const PANEL_GAP: u16 = 2;
         // Must match `compute_layout` so mouse hit testing and rendering
         // agree on where the graph begins.
         const WIDE_STATS_W: u16 = 32;
@@ -1497,10 +1499,10 @@ impl Widget for StocksWidget {
         // 1-col gaps between panels so they don't visually run together.
         if is_wide {
             let mut constraints: Vec<Constraint> =
-                vec![Constraint::Length(WIDE_LIST_W), Constraint::Length(1)];
+            vec![Constraint::Length(WIDE_LIST_W), Constraint::Length(PANEL_GAP)];
             if with_stats {
                 constraints.push(Constraint::Length(WIDE_STATS_W));
-                constraints.push(Constraint::Length(1));
+                constraints.push(Constraint::Length(PANEL_GAP));
             }
             constraints.push(Constraint::Fill(1));
             let cols = Layout::default()
@@ -3723,10 +3725,7 @@ fn format_list_row<'a>(
             };
             let glyph = if chg_abs >= 0.0 { '▲' } else { '▼' };
             let price_str = format!("{:>10.2}", q.price);
-            let change_str = match mode {
-                DisplayMode::Percent => format!("{glyph} {:+.2}%", chg_pct),
-                DisplayMode::Dollar => format!("{glyph} {:+.2}", chg_abs),
-            };
+            let change_str = format_list_change(glyph, mode, chg_abs, chg_pct);
             (price_str, change_str, color)
         }
         Some(QuoteState::Inflight) | None => ("       …".to_string(), "    …".into(), Color::Gray),
@@ -3749,6 +3748,44 @@ fn format_list_row<'a>(
         Span::raw("  "),
         Span::styled(format!("{:>10}", change_str), Style::default().fg(color)),
     ])
+}
+
+/// Render the watchlist's fixed-width (10 cell) change column without
+/// allowing large multi-month moves to spill into the adjacent stats panel.
+/// Everyday moves keep two decimals; only values that cannot fit are rounded
+/// and finally compacted using K/M/B/T suffixes.
+fn format_list_change(glyph: char, mode: DisplayMode, absolute: f64, percent: f64) -> String {
+    const WIDTH: usize = 10;
+    let (value, suffix) = match mode {
+        DisplayMode::Percent => (percent, "%"),
+        DisplayMode::Dollar => (absolute, ""),
+    };
+    // A five-digit dollar move technically fits, but it makes the list much
+    // harder to scan next to the profile panel. Use the compact form first.
+    let force_compact = matches!(mode, DisplayMode::Dollar) && value.abs() >= 10_000.0;
+    let detailed = format!("{glyph} {value:+.2}{suffix}");
+    if !force_compact && detailed.chars().count() <= WIDTH {
+        return detailed;
+    }
+
+    let rounded = format!("{glyph} {value:+.0}{suffix}");
+    if !force_compact && rounded.chars().count() <= WIDTH {
+        return rounded;
+    }
+
+    let abs = value.abs();
+    let compact = if abs >= 1e12 {
+        format!("{:+.1}T", value / 1e12)
+    } else if abs >= 1e9 {
+        format!("{:+.1}B", value / 1e9)
+    } else if abs >= 1e6 {
+        format!("{:+.1}M", value / 1e6)
+    } else if abs >= 1e3 {
+        format!("{:+.1}K", value / 1e3)
+    } else {
+        format!("{value:+.0}")
+    };
+    format!("{glyph} {compact}")
 }
 
 fn render_stats_panel(
