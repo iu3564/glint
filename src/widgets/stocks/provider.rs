@@ -480,6 +480,7 @@ fn coingecko_asset(symbol: &str) -> Option<(&'static str, &'static str)> {
         "MSFTX-USD" => Some(("microsoft-xstock", "Microsoft xStock")),
         "NVDAX-USD" => Some(("nvidia-xstock", "NVIDIA xStock")),
         "AMZNX-USD" => Some(("amazon-xstock", "Amazon xStock")),
+        "SPCXX-USD" => Some(("spacex-xstocks", "SpaceX xStock")),
         _ => None,
     }
 }
@@ -778,6 +779,10 @@ mod tests {
         assert_eq!(
             coingecko_asset("spyX-usd"),
             Some(("sp500-xstock", "SP500 xStock"))
+        );
+        assert_eq!(
+            coingecko_asset("SPCXx-USD"),
+            Some(("spacex-xstocks", "SpaceX xStock"))
         );
         assert_eq!(coingecko_asset("AAPL"), None);
     }

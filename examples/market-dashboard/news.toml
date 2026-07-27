@@ -22,7 +22,7 @@ url = "https://news.google.com/rss/search?q=(GLDY+OR+%22Streamex+GLDY%22)+when%3
 
 [[feeds]]
 label = "xStocks · світ"
-url = "https://news.google.com/rss/search?q=(xStocks+OR+SPYx+OR+AAPLx+OR+MSFTx+OR+NVDAx+OR+AMZNx)+when%3A30d&hl=en&gl=US&ceid=US%3Aen"
+url = "https://news.google.com/rss/search?q=(xStocks+OR+SPYx+OR+AAPLx+OR+MSFTx+OR+NVDAx+OR+AMZNx+OR+SPCXx+OR+SpaceX)+when%3A30d&hl=en&gl=US&ceid=US%3Aen"
 
 [[topics]]
 label = "Золото"
@@ -42,7 +42,7 @@ keywords = ["gldy", "streamex", "yield-bearing gold", "gold-backed yield", "до
 
 [[topics]]
 label = "xStocks"
-keywords = ["xstock", "spyx", "aaplx", "msftx", "nvdax", "amznx", "backed assets", "tokenized equity"]
+keywords = ["xstock", "spyx", "aaplx", "msftx", "nvdax", "amznx", "spcxx", "spacex", "backed assets", "tokenized equity"]
 
 [[topics]]
 label = "Валюта"
