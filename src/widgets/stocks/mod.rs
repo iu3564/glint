@@ -1165,7 +1165,9 @@ impl StocksWidget {
         // Keep the watchlist as one compact left rail. The selected asset's
         // details live directly below it instead of consuming a permanent
         // second column and leaving an empty block underneath.
-        const WIDE_LIST_W: u16 = 32;
+        // `XSPCX-USDT` is 10 cells; leave one cell after the longest
+        // configured token before the price column begins.
+        const WIDE_LIST_W: u16 = 36;
         const PANEL_GAP: u16 = 2;
         const MIN_GRAPH_W: u16 = 24;
         let is_wide = body.width >= WIDE_LIST_W + MIN_GRAPH_W;
@@ -1436,7 +1438,9 @@ impl Widget for StocksWidget {
         // Adaptive layout: in landscape mode (wide), a compact left rail
         // holds the list above the selected asset's details, while the graph
         // takes all remaining width. Portrait mode keeps the vertical stack.
-        const WIDE_LIST_W: u16 = 32;
+        // Must match `compute_layout`: the longest configured symbols are
+        // token pairs such as `XSPCX-USDT` (10 cells).
+        const WIDE_LIST_W: u16 = 36;
         const PANEL_GAP: u16 = 2;
         const MIN_GRAPH_W: u16 = 24;
         let is_wide = body.width >= WIDE_LIST_W + MIN_GRAPH_W;
@@ -3678,11 +3682,12 @@ fn format_list_row<'a>(
     } else {
         Style::default().add_modifier(Modifier::BOLD)
     };
-    // Symbol column needs 7 cols to fit "^GSPC" (5) + a space, or longer
-    // watchlist symbols with up to 6 chars.
+    // Tokenized assets use symbols such as `XSPCX-USDT` (10 cells), so the
+    // ticker column must reserve 11 cells. Otherwise the symbol pushes its
+    // price/change cells right and the last digits get clipped by the rail.
     Line::from(vec![
         Span::styled(prefix, sym_style),
-        Span::styled(format!("{:<7}", symbol), sym_style),
+        Span::styled(format!("{:<11}", symbol), sym_style),
         Span::styled(price_str, Style::default()),
         Span::raw("  "),
         Span::styled(format!("{:>10}", change_str), Style::default().fg(color)),

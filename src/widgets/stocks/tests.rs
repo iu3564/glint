@@ -301,6 +301,21 @@ fn list_row_includes_arrow_for_selected_only() {
 }
 
 #[test]
+fn list_row_reserves_a_full_token_pair_column() {
+    let q = quote("XSPCX-USDT", 612.27, 610.0);
+    let line = format_list_row(
+        "XSPCX-USDT",
+        Some(&QuoteState::Ready(Arc::new(q))),
+        false,
+        DisplayMode::Dollar,
+        Period::Day,
+    );
+    let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+    assert!(text.starts_with("  XSPCX-USDT "), "row {text:?}");
+    assert!(text.contains("    612.27"), "row {text:?}");
+}
+
+#[test]
 fn list_change_keeps_large_period_moves_inside_its_column() {
     assert_eq!(
         format_list_change('▲', DisplayMode::Dollar, 123.45, 0.0),
