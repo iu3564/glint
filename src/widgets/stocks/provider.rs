@@ -469,7 +469,7 @@ impl YahooFinanceProvider {
             "https://www.okx.com/api/v5/market/history-candles?instId={}&bar={}&limit={}",
             asset.pair,
             okx_candle_interval(period),
-            xstock_candle_limit(period),
+            okx_candle_limit(period),
         );
         let body = self
             .client
@@ -568,19 +568,28 @@ fn usdt_spot_asset(symbol: &str) -> Option<XStockUsdtAsset> {
     }
 }
 
-fn xstock_candle_limit(period: Period) -> u16 {
+/// Keep every request at or below OKX's 300-candle API cap while selecting a
+/// bar width that covers the range selected in the UI.
+fn okx_candle_limit(period: Period) -> u16 {
     match period {
         Period::Day => 288,
         Period::Week => 168,
-        Period::Month => 360,
-        _ => 365,
+        Period::Month => 180,
+        Period::SixMonth => 180,
+        Period::YearToDate | Period::Year => 53,
+        Period::ThreeYear => 157,
+        Period::FiveYear => 261,
+        Period::TenYear => 120,
     }
 }
 fn okx_candle_interval(period: Period) -> &'static str {
     match period {
         Period::Day => "5m",
-        Period::Week | Period::Month => "1H",
-        _ => "1D",
+        Period::Week => "1H",
+        Period::Month => "4H",
+        Period::SixMonth => "1D",
+        Period::YearToDate | Period::Year | Period::ThreeYear | Period::FiveYear => "1W",
+        Period::TenYear => "1M",
     }
 }
 
@@ -934,7 +943,11 @@ mod tests {
     fn okx_intervals_use_the_api_case_sensitive_format() {
         assert_eq!(okx_candle_interval(Period::Day), "5m");
         assert_eq!(okx_candle_interval(Period::Week), "1H");
-        assert_eq!(okx_candle_interval(Period::Month), "1H");
-        assert_eq!(okx_candle_interval(Period::Year), "1D");
+        assert_eq!(okx_candle_interval(Period::Month), "4H");
+        assert_eq!(okx_candle_interval(Period::SixMonth), "1D");
+        assert_eq!(okx_candle_interval(Period::Year), "1W");
+        assert_eq!(okx_candle_interval(Period::TenYear), "1M");
+        assert_eq!(okx_candle_limit(Period::FiveYear), 261);
+        assert_eq!(okx_candle_limit(Period::TenYear), 120);
     }
 }
