@@ -282,8 +282,7 @@ impl StocksState {
         // re-using it avoids the borrow-checker awkwardness of
         // returning `Option<&_>` from a method that's overwhelmingly
         // used as "iterate / look up by symbol."
-        static EMPTY: std::sync::OnceLock<HashMap<String, QuoteState>> =
-            std::sync::OnceLock::new();
+        static EMPTY: std::sync::OnceLock<HashMap<String, QuoteState>> = std::sync::OnceLock::new();
         self.quotes_by_period
             .get(&period)
             .unwrap_or_else(|| EMPTY.get_or_init(HashMap::new))
@@ -423,7 +422,9 @@ impl StocksWidget {
         // disk on first switch (see `set_period`).
         let mut initial_state = StocksState::default();
         initial_state.poll = crate::polling::PollTracker::new(poll_interval);
-        if let Some(entry) = cache.load::<HashMap<String, StockQuote>>(&quotes_cache_key(CACHE_KEY_QUOTES_PREFIX, period)) {
+        if let Some(entry) = cache
+            .load::<HashMap<String, StockQuote>>(&quotes_cache_key(CACHE_KEY_QUOTES_PREFIX, period))
+        {
             initial_state.poll.seed_from_cache_age(entry.age());
             initial_state.quotes_by_period.insert(
                 period,
@@ -459,15 +460,8 @@ impl StocksWidget {
         // persisted casing either way.
         if let Some(sym) = persisted_symbol {
             let symbols = widget.all_symbols();
-            if let Some(idx) = symbols
-                .iter()
-                .position(|s| s.eq_ignore_ascii_case(&sym))
-            {
-                widget
-                    .state
-                    .lock()
-                    .expect("stocks state poisoned")
-                    .selected = idx;
+            if let Some(idx) = symbols.iter().position(|s| s.eq_ignore_ascii_case(&sym)) {
+                widget.state.lock().expect("stocks state poisoned").selected = idx;
             }
         }
         widget
@@ -573,7 +567,8 @@ impl StocksWidget {
         } else {
             self.config.poll_interval_secs.max(15)
         };
-        st.poll.set_interval(Duration::from_secs(active_interval_secs));
+        st.poll
+            .set_interval(Duration::from_secs(active_interval_secs));
         if !st.poll.is_due() {
             return false;
         }
@@ -671,7 +666,10 @@ impl StocksWidget {
             st.dirty = true;
             drop(st);
             if !snapshot.is_empty() {
-                if let Err(err) = cache.store(&quotes_cache_key(CACHE_KEY_QUOTES_PREFIX, period), &snapshot) {
+                if let Err(err) = cache.store(
+                    &quotes_cache_key(CACHE_KEY_QUOTES_PREFIX, period),
+                    &snapshot,
+                ) {
                     tracing::warn!(error = %err, "stocks cache store failed");
                 }
             }
@@ -1058,10 +1056,7 @@ impl StocksWidget {
     /// `QuoteState::Ready` carries `Arc<StockQuote>`, so the
     /// HashMap clone is O(N) atomic-increments, not O(N) deep
     /// StockQuote copies.
-    fn record_focus_and_snapshot_quotes(
-        &self,
-        focused: bool,
-    ) -> HashMap<String, QuoteState> {
+    fn record_focus_and_snapshot_quotes(&self, focused: bool) -> HashMap<String, QuoteState> {
         let mut st = self.state.lock().expect("stocks state poisoned");
         st.last_focused_at = focused.then(Instant::now);
         st.quotes(self.period).clone()
@@ -1188,10 +1183,8 @@ impl StocksWidget {
         let is_wide = body.width >= WIDE_LIST_W + MIN_GRAPH_W;
         let with_stats = is_wide && body.width >= WIDE_LIST_W + WIDE_STATS_W + MIN_GRAPH_W;
         const FUND_STRIP_H: u16 = 2;
-        let show_fund_strip = tier >= ViewTier::Expanded
-            && is_wide
-            && !with_stats
-            && body.height > FUND_STRIP_H + 4;
+        let show_fund_strip =
+            tier >= ViewTier::Expanded && is_wide && !with_stats && body.height > FUND_STRIP_H + 4;
         let body = if show_fund_strip {
             Rect {
                 height: body.height - FUND_STRIP_H,
@@ -1474,10 +1467,8 @@ impl Widget for StocksWidget {
         // summary strip. The existing stats panel (which fires when
         // `with_stats` is true) already renders fundamentals for wider cells.
         const FUND_STRIP_H: u16 = 2;
-        let show_fund_strip = tier >= ViewTier::Expanded
-            && is_wide
-            && !with_stats
-            && body.height > FUND_STRIP_H + 4;
+        let show_fund_strip =
+            tier >= ViewTier::Expanded && is_wide && !with_stats && body.height > FUND_STRIP_H + 4;
         let fund_strip_area = if show_fund_strip {
             Some(Rect {
                 y: body.y + body.height - FUND_STRIP_H,
@@ -2104,6 +2095,18 @@ fn render_graph_panel(
         header_spans.push(Span::raw("  "));
         header_spans.push(Span::styled("EMA50", Style::default().fg(Color::Yellow)));
     }
+    if !matches!(period, Period::Day | Period::Week) && !q.reference_history.is_empty() {
+        header_spans.push(Span::raw("  "));
+        header_spans.push(Span::styled(
+            format!(
+                "┄ {}",
+                q.reference_label.as_deref().unwrap_or("довідкова історія")
+            ),
+            theme.text_dim,
+        ));
+        header_spans.push(Span::raw("  "));
+        header_spans.push(Span::styled("● OKX", Style::default().fg(Color::Cyan)));
+    }
     let header = Line::from(header_spans);
     frame.render_widget(
         Paragraph::new(header),
@@ -2141,16 +2144,28 @@ fn render_graph_panel(
     } else {
         None
     };
-    let (intraday_render, timestamps_render): (&[f64], &[i64]) = if let Some((vs, ts, _)) = &filtered {
-        (vs.as_slice(), ts.as_slice())
-    } else if let Some((vs, ts)) = &week_filtered {
-        (vs.as_slice(), ts.as_slice())
-    } else {
-        (q.intraday.as_slice(), q.intraday_timestamps.as_slice())
-    };
+    let (intraday_render, timestamps_render): (&[f64], &[i64]) =
+        if let Some((vs, ts, _)) = &filtered {
+            (vs.as_slice(), ts.as_slice())
+        } else if let Some((vs, ts)) = &week_filtered {
+            (vs.as_slice(), ts.as_slice())
+        } else {
+            (q.intraday.as_slice(), q.intraday_timestamps.as_slice())
+        };
     if intraday_render.is_empty() {
         return;
     }
+    let use_reference = !matches!(period, Period::Day | Period::Week)
+        && q.reference_history.len() >= 2
+        && q.reference_history.len() == q.reference_timestamps.len();
+    let (background_render, background_timestamps): (&[f64], &[i64]) = if use_reference {
+        (
+            q.reference_history.as_slice(),
+            q.reference_timestamps.as_slice(),
+        )
+    } else {
+        (intraday_render, timestamps_render)
+    };
 
     // RSI/MACD live in their own panels beneath the price trace. Preserve a
     // useful price chart first: a normal dashboard shows a tall RSI panel;
@@ -2182,7 +2197,7 @@ fn render_graph_panel(
 
     // Compute y-range from the visible bars.
     let (mut min, mut max) = (f64::INFINITY, f64::NEG_INFINITY);
-    for v in intraday_render {
+    for v in background_render.iter().chain(intraday_render.iter()) {
         if *v < min {
             min = *v;
         }
@@ -2275,7 +2290,7 @@ fn render_graph_panel(
     } else {
         plot_w
     };
-    let rows = braille::render_series(intraday_render, plot_h, trace_w, plot_min, plot_max);
+    let rows = braille::render_series(background_render, plot_h, trace_w, plot_min, plot_max);
     for (i, row) in rows.iter().enumerate() {
         let rect = Rect {
             x: plot_x,
@@ -2286,14 +2301,54 @@ fn render_graph_panel(
         frame.render_widget(
             Paragraph::new(Span::styled(
                 row.clone(),
-                Style::default().fg(if chg >= 0.0 {
-                    Color::LightGreen
+                if use_reference {
+                    Style::default()
+                        .fg(Color::DarkGray)
+                        .add_modifier(Modifier::DIM)
                 } else {
-                    Color::LightRed
-                }),
+                    Style::default().fg(if chg >= 0.0 {
+                        Color::LightGreen
+                    } else {
+                        Color::LightRed
+                    })
+                },
             )),
             rect,
         );
+    }
+    if use_reference {
+        if let (
+            Some(&reference_start),
+            Some(&reference_end),
+            Some(&actual_start),
+            Some(&actual_end),
+        ) = (
+            background_timestamps.first(),
+            background_timestamps.last(),
+            timestamps_render.first(),
+            timestamps_render.last(),
+        ) {
+            let start = reference_start.min(actual_start);
+            let end = reference_end.max(actual_end);
+            render_timestamped_overlay(
+                frame,
+                plot_x,
+                plot_top,
+                trace_w,
+                plot_h,
+                intraday_render,
+                timestamps_render,
+                start,
+                end,
+                plot_min,
+                plot_max,
+                if chg >= 0.0 {
+                    Color::LightGreen
+                } else {
+                    Color::LightRed
+                },
+            );
+        }
     }
     if let Some(ema20) = ema20.as_deref() {
         render_braille_overlay(
@@ -2327,9 +2382,9 @@ fn render_graph_panel(
     // period (day, week, month, quarter, year, or biennium). The same
     // (column, label) pairs drive both the guides and the x-axis labels
     // so they line up vertically.
-    let annotations = period_annotations(period, timestamps_render);
-    if !annotations.is_empty() && timestamps_render.len() >= 2 {
-        let n = timestamps_render.len();
+    let annotations = period_annotations(period, background_timestamps);
+    if !annotations.is_empty() && background_timestamps.len() >= 2 {
+        let n = background_timestamps.len();
         let faint = Style::default()
             .fg(Color::DarkGray)
             .add_modifier(Modifier::DIM);
@@ -2426,9 +2481,7 @@ fn render_graph_panel(
     // vertical guides so the labels line up directly under their guides.
     let line = if matches!(period, Period::Day) || annotations.is_empty() {
         let labels: Vec<String> = match period {
-            Period::Day => {
-                str_labels(&["9:30", "10:45", "12:00", "13:15", "14:30", "15:45"])
-            }
+            Period::Day => str_labels(&["9:30", "10:45", "12:00", "13:15", "14:30", "15:45"]),
             Period::Week => str_labels(&["Mon", "Tue", "Wed", "Thu", "Fri"]),
             Period::Month => str_labels(&["wk1", "wk2", "wk3", "wk4"]),
             Period::SixMonth => str_labels(&["1mo", "2mo", "3mo", "4mo", "5mo", "6mo"]),
@@ -2461,7 +2514,10 @@ fn render_graph_panel(
                     ann.bar_index as f64 / (n - 1) as f64
                 };
                 let col = (frac * (trace_w as f64 - 1.0)).round() as usize;
-                (col.min(trace_w.saturating_sub(1) as usize), ann.label.as_str())
+                (
+                    col.min(trace_w.saturating_sub(1) as usize),
+                    ann.label.as_str(),
+                )
             })
             .collect();
         lay_out_x_axis_labels_at_cols(&cols, plot_w as usize)
@@ -2504,14 +2560,20 @@ fn rsi_14(values: &[f64]) -> Vec<f64> {
 
 fn rsi_from_averages(avg_gain: f64, avg_loss: f64) -> f64 {
     if avg_loss <= f64::EPSILON {
-        if avg_gain <= f64::EPSILON { 50.0 } else { 100.0 }
+        if avg_gain <= f64::EPSILON {
+            50.0
+        } else {
+            100.0
+        }
     } else {
         100.0 - 100.0 / (1.0 + avg_gain / avg_loss)
     }
 }
 
 fn ema(values: &[f64], period: usize) -> Vec<f64> {
-    let Some(&first) = values.first() else { return Vec::new() };
+    let Some(&first) = values.first() else {
+        return Vec::new();
+    };
     let alpha = 2.0 / (period as f64 + 1.0);
     let mut out = Vec::with_capacity(values.len());
     let mut previous = first;
@@ -2555,7 +2617,10 @@ fn render_indicator_summary(
         } else {
             ("Тренд: → боковий", Color::LightYellow)
         };
-        spans.push(Span::styled(text, Style::default().fg(color).add_modifier(Modifier::BOLD)));
+        spans.push(Span::styled(
+            text,
+            Style::default().fg(color).add_modifier(Modifier::BOLD),
+        ));
     }
     if let Some(value) = rsi.and_then(|values| values.last()).copied() {
         if !spans.is_empty() {
@@ -2568,7 +2633,10 @@ fn render_indicator_summary(
         } else {
             (format!("RSI: {value:.0} нейтрально"), Color::LightMagenta)
         };
-        spans.push(Span::styled(text, Style::default().fg(color).add_modifier(Modifier::BOLD)));
+        spans.push(Span::styled(
+            text,
+            Style::default().fg(color).add_modifier(Modifier::BOLD),
+        ));
     }
     if let Some((line, signal)) = macd {
         if let (Some(macd_value), Some(signal_value)) = (line.last(), signal.last()) {
@@ -2582,7 +2650,10 @@ fn render_indicator_summary(
             } else {
                 ("MACD: → нейтрально", Color::LightYellow)
             };
-            spans.push(Span::styled(text, Style::default().fg(color).add_modifier(Modifier::BOLD)));
+            spans.push(Span::styled(
+                text,
+                Style::default().fg(color).add_modifier(Modifier::BOLD),
+            ));
         }
     }
     let (context, color) = indicator_context(ema20, ema50, macd);
@@ -2612,7 +2683,10 @@ fn market_hint(
     rsi: Option<&[f64]>,
     macd: Option<&(Vec<f64>, Vec<f64>)>,
 ) -> (String, Color) {
-    let trend = match (ema20.and_then(|values| values.last()), ema50.and_then(|values| values.last())) {
+    let trend = match (
+        ema20.and_then(|values| values.last()),
+        ema50.and_then(|values| values.last()),
+    ) {
         (Some(fast), Some(slow)) if fast > slow => Some(1),
         (Some(fast), Some(slow)) if fast < slow => Some(-1),
         _ => None,
@@ -2627,14 +2701,35 @@ fn market_hint(
     };
     let rsi_value = rsi.and_then(|values| values.last()).copied();
     let (text, color) = match rsi_value {
-        Some(value) if value >= 70.0 => ("рух розігрітий — не поспішайте, дочекайтесь паузи", Color::LightYellow),
-        Some(value) if value <= 30.0 => ("не ловіть відскок навмання — дочекайтесь підтвердження", Color::LightYellow),
+        Some(value) if value >= 70.0 => (
+            "рух розігрітий — не поспішайте, дочекайтесь паузи",
+            Color::LightYellow,
+        ),
+        Some(value) if value <= 30.0 => (
+            "не ловіть відскок навмання — дочекайтесь підтвердження",
+            Color::LightYellow,
+        ),
         _ => match (trend, momentum) {
-            (Some(1), Some(1)) => ("рух узгоджений — спостерігайте, не наздоганяйте ціну", Color::LightGreen),
-            (Some(-1), Some(-1)) => ("спад підтверджується — краще зачекати стабілізації", Color::LightRed),
-            (Some(1), Some(-1)) => ("можлива коротка корекція — зачекайте підтвердження", Color::LightYellow),
-            (Some(-1), Some(1)) => ("можливий короткий відскок, але тренд ще вниз", Color::LightYellow),
-            _ => ("індикатори не узгоджені — зачекайте підтвердження", Color::LightYellow),
+            (Some(1), Some(1)) => (
+                "рух узгоджений — спостерігайте, не наздоганяйте ціну",
+                Color::LightGreen,
+            ),
+            (Some(-1), Some(-1)) => (
+                "спад підтверджується — краще зачекати стабілізації",
+                Color::LightRed,
+            ),
+            (Some(1), Some(-1)) => (
+                "можлива коротка корекція — зачекайте підтвердження",
+                Color::LightYellow,
+            ),
+            (Some(-1), Some(1)) => (
+                "можливий короткий відскок, але тренд ще вниз",
+                Color::LightYellow,
+            ),
+            _ => (
+                "індикатори не узгоджені — зачекайте підтвердження",
+                Color::LightYellow,
+            ),
         },
     };
     (format!("Коротко {}: {text}", period.label()), color)
@@ -2647,7 +2742,10 @@ fn indicator_context(
     ema50: Option<&[f64]>,
     macd: Option<&(Vec<f64>, Vec<f64>)>,
 ) -> (&'static str, Color) {
-    let trend = match (ema20.and_then(|values| values.last()), ema50.and_then(|values| values.last())) {
+    let trend = match (
+        ema20.and_then(|values| values.last()),
+        ema50.and_then(|values| values.last()),
+    ) {
         (Some(fast), Some(slow)) if fast > slow => Some(1),
         (Some(fast), Some(slow)) if fast < slow => Some(-1),
         _ => None,
@@ -2691,7 +2789,16 @@ fn render_rsi_panel(
         )),
         Rect::new(area_x, y, label_w, 1),
     );
-    render_indicator_guides(frame, area_x + label_w, y, width, height, 0.0, 100.0, &[70.0, 30.0]);
+    render_indicator_guides(
+        frame,
+        area_x + label_w,
+        y,
+        width,
+        height,
+        0.0,
+        100.0,
+        &[70.0, 30.0],
+    );
     render_braille_overlay(
         frame,
         area_x + label_w,
@@ -2752,7 +2859,9 @@ fn render_macd_panel(
     frame.render_widget(
         Paragraph::new(Span::styled(
             "MACD",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
         )),
         Rect::new(area_x, y, label_w, 1),
     );
@@ -2767,7 +2876,17 @@ fn render_macd_panel(
         min,
         max,
     );
-    render_braille_overlay(frame, area_x + label_w, y, width, height, macd, min, max, Color::Cyan);
+    render_braille_overlay(
+        frame,
+        area_x + label_w,
+        y,
+        width,
+        height,
+        macd,
+        min,
+        max,
+        Color::Cyan,
+    );
     render_braille_overlay(
         frame,
         area_x + label_w,
@@ -2825,7 +2944,11 @@ fn render_macd_histogram(
         } else {
             (zero_row, value_row)
         };
-        let color = if value >= 0.0 { Color::LightGreen } else { Color::LightRed };
+        let color = if value >= 0.0 {
+            Color::LightGreen
+        } else {
+            Color::LightRed
+        };
         for row in from..=to {
             frame.render_widget(
                 Paragraph::new(Span::styled("▐", Style::default().fg(color))),
@@ -2858,7 +2981,8 @@ fn render_macd_cross_markers(
         if !bullish && !bearish {
             continue;
         }
-        let column = (i as f64 / (macd.len() - 1) as f64 * width.saturating_sub(1) as f64).round() as u16;
+        let column =
+            (i as f64 / (macd.len() - 1) as f64 * width.saturating_sub(1) as f64).round() as u16;
         if last_column.is_some_and(|last| column.saturating_sub(last) < 5) {
             continue;
         }
@@ -2869,7 +2993,10 @@ fn render_macd_cross_markers(
             ('▼', (line_row + 1).min(height - 1), Color::LightRed)
         };
         frame.render_widget(
-            Paragraph::new(Span::styled(marker.to_string(), Style::default().fg(color).add_modifier(Modifier::BOLD))),
+            Paragraph::new(Span::styled(
+                marker.to_string(),
+                Style::default().fg(color).add_modifier(Modifier::BOLD),
+            )),
             Rect::new(x + column, y + row, 1, 1),
         );
         last_column = Some(column);
@@ -2890,7 +3017,12 @@ fn render_macd_zero_label(
     }
     let row = series_row(0.0, min, max, height).min(height - 1);
     frame.render_widget(
-        Paragraph::new(Span::styled("0", Style::default().fg(Color::White).add_modifier(Modifier::BOLD))),
+        Paragraph::new(Span::styled(
+            "0",
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        )),
         Rect::new(x + width - 1, y + row, 1, 1),
     );
 }
@@ -2920,7 +3052,9 @@ fn render_indicator_guides(
         frame.render_widget(
             Paragraph::new(Span::styled(
                 "┄".repeat(width as usize),
-                Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::DIM),
             )),
             Rect::new(x, y + row.min(height - 1), width, 1),
         );
@@ -2966,7 +3100,10 @@ fn render_braille_overlay(
     max: f64,
     color: Color,
 ) {
-    for (row, line) in braille::render_series(values, height, width, min, max).iter().enumerate() {
+    for (row, line) in braille::render_series(values, height, width, min, max)
+        .iter()
+        .enumerate()
+    {
         for (column, ch) in line.chars().enumerate() {
             if ch != ' ' {
                 frame.render_widget(
@@ -2978,6 +3115,65 @@ fn render_braille_overlay(
     }
 }
 
+/// Paint a short, exchange-specific series over a longer reference timeline.
+/// Unlike `render_braille_overlay`, x-coordinates come from timestamps, so a
+/// newly listed token appears only in the right-hand part of a long chart.
+#[allow(clippy::too_many_arguments)]
+fn render_timestamped_overlay(
+    frame: &mut Frame,
+    x: u16,
+    y: u16,
+    width: u16,
+    height: u16,
+    values: &[f64],
+    timestamps: &[i64],
+    timeline_start: i64,
+    timeline_end: i64,
+    min: f64,
+    max: f64,
+    color: Color,
+) {
+    if width == 0
+        || height == 0
+        || values.len() != timestamps.len()
+        || timeline_end <= timeline_start
+    {
+        return;
+    }
+    let span_t = (timeline_end - timeline_start) as f64;
+    let span_v = (max - min).max(f64::MIN_POSITIVE);
+    let mut previous: Option<(u16, u16)> = None;
+    for (&value, &timestamp) in values.iter().zip(timestamps.iter()) {
+        if !value.is_finite() || timestamp < timeline_start || timestamp > timeline_end {
+            continue;
+        }
+        let col = (((timestamp - timeline_start) as f64 / span_t)
+            * (width.saturating_sub(1) as f64))
+            .round() as u16;
+        let row = ((1.0 - ((value - min) / span_v).clamp(0.0, 1.0))
+            * (height.saturating_sub(1) as f64))
+            .round() as u16;
+        if let Some((prev_col, prev_row)) = previous {
+            let distance = col.saturating_sub(prev_col);
+            if distance > 0 && distance <= 8 {
+                for step in 0..=distance {
+                    let fraction = step as f64 / distance as f64;
+                    let joined_row = (prev_row as f64 + (row as f64 - prev_row as f64) * fraction)
+                        .round() as u16;
+                    frame.render_widget(
+                        Paragraph::new(Span::styled("•", Style::default().fg(color))),
+                        Rect::new(x + prev_col + step, y + joined_row.min(height - 1), 1, 1),
+                    );
+                }
+            }
+        }
+        frame.render_widget(
+            Paragraph::new(Span::styled("•", Style::default().fg(color))),
+            Rect::new(x + col.min(width - 1), y + row.min(height - 1), 1, 1),
+        );
+        previous = Some((col, row));
+    }
+}
 
 /// Returns (change_abs, change_pct) for the given period. 1D uses the
 /// previous-close convention (standard ticker change); longer windows use
@@ -3069,8 +3265,11 @@ fn pick_week_chart_bars(q: &StockQuote) -> Option<(Vec<f64>, Vec<i64>)> {
         return None;
     }
     let to_local_date = |ts: i64| -> Option<i32> {
-        chrono::DateTime::<chrono::Utc>::from_timestamp(ts, 0)
-            .map(|dt| dt.with_timezone(&chrono::Local).date_naive().num_days_from_ce())
+        chrono::DateTime::<chrono::Utc>::from_timestamp(ts, 0).map(|dt| {
+            dt.with_timezone(&chrono::Local)
+                .date_naive()
+                .num_days_from_ce()
+        })
     };
     // Walk the bars in order, collecting unique local dates as we go.
     let mut unique_dates: Vec<i32> = Vec::new();
@@ -3216,10 +3415,7 @@ fn extended_hours_from_meta(q: &StockQuote) -> Option<(&'static str, f64, f64)> 
         (Some(c), Some(p)) => Some((c, p)),
         _ => None,
     };
-    let prefer_pre = matches!(
-        q.market_state.as_deref(),
-        Some("PRE") | Some("PREPRE")
-    );
+    let prefer_pre = matches!(q.market_state.as_deref(), Some("PRE") | Some("PREPRE"));
     let (label, chg, pct) = if prefer_pre {
         let (c, p) = pre.or(post)?;
         if pre.is_some() {
@@ -3333,7 +3529,6 @@ fn render_period_toggle_bar(frame: &mut Frame, area: Rect, active: Period, theme
     }
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
-
 
 #[allow(clippy::too_many_arguments)] // 10 args, all distinct render inputs — no obvious bundle.
 fn render_list_panel(
@@ -3589,7 +3784,11 @@ fn render_stats_panel(
         lines.push(stat_line("EPS", &format!("{eps:.2}"), theme));
     }
     if let Some(y) = q.dividend_yield {
-        lines.push(stat_line("Дохідність", &format!("{:.2}%", y * 100.0), theme));
+        lines.push(stat_line(
+            "Дохідність",
+            &format!("{:.2}%", y * 100.0),
+            theme,
+        ));
     }
     if let Some(b) = q.beta {
         lines.push(stat_line("Бета", &format!("{b:.2}"), theme));

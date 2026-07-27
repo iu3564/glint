@@ -57,6 +57,14 @@ pub struct StockQuote {
     /// regular/post session boundaries on the 1D chart.
     #[serde(default)]
     pub intraday_timestamps: Vec<i64>,
+    /// Reference history for the underlying asset. Used only as a muted
+    /// background layer when an OKX token has a shorter trading history.
+    #[serde(default)]
+    pub reference_history: Vec<f64>,
+    #[serde(default)]
+    pub reference_timestamps: Vec<i64>,
+    #[serde(default)]
+    pub reference_label: Option<String>,
     /// Unix-second bounds of the *current/upcoming* regular trading
     /// session, taken from `meta.currentTradingPeriod.regular`. During
     /// the regular session this is today's open/close; outside it
@@ -282,6 +290,9 @@ impl YahooFinanceProvider {
             currency: Some("USD".into()),
             intraday: points.iter().map(|(_, value)| *value).collect(),
             intraday_timestamps: points.iter().map(|(timestamp, _)| *timestamp).collect(),
+            reference_history: Vec::new(),
+            reference_timestamps: Vec::new(),
+            reference_label: None,
             regular_session_start_ts: None,
             regular_session_end_ts: None,
             previous_session_start_ts: None,
@@ -442,6 +453,9 @@ impl YahooFinanceProvider {
             currency: meta.currency,
             intraday,
             intraday_timestamps,
+            reference_history: Vec::new(),
+            reference_timestamps: Vec::new(),
+            reference_label: None,
             regular_session_start_ts,
             regular_session_end_ts,
             previous_session_start_ts,
@@ -497,6 +511,11 @@ impl YahooFinanceProvider {
             anyhow::bail!("{symbol} returned no USDT price history");
         }
         let points = downsample_pairs(points, 240);
+        let reference = if matches!(period, Period::Day | Period::Week) {
+            None
+        } else {
+            self.fetch_chart(asset.reference_symbol, period).await.ok()
+        };
         let price = points.last().map(|(_, price)| *price).unwrap_or_default();
         let previous_close = points
             .iter()
@@ -526,6 +545,15 @@ impl YahooFinanceProvider {
             currency: Some("USDT".into()),
             intraday: points.iter().map(|(_, price)| *price).collect(),
             intraday_timestamps: points.iter().map(|(timestamp, _)| *timestamp).collect(),
+            reference_history: reference
+                .as_ref()
+                .map(|quote| quote.intraday.clone())
+                .unwrap_or_default(),
+            reference_timestamps: reference
+                .as_ref()
+                .map(|quote| quote.intraday_timestamps.clone())
+                .unwrap_or_default(),
+            reference_label: reference.map(|_| asset.reference_label.into()),
             regular_session_start_ts: None,
             regular_session_end_ts: None,
             previous_session_start_ts: None,
@@ -546,6 +574,8 @@ impl YahooFinanceProvider {
 struct XStockUsdtAsset {
     pair: &'static str,
     name: &'static str,
+    reference_symbol: &'static str,
+    reference_label: &'static str,
 }
 #[derive(Deserialize)]
 struct OkxCandles {
@@ -553,17 +583,62 @@ struct OkxCandles {
 }
 
 fn usdt_spot_asset(symbol: &str) -> Option<XStockUsdtAsset> {
-    let okx = |pair, name| XStockUsdtAsset { pair, name };
+    let okx = |pair, name, reference_symbol, reference_label| XStockUsdtAsset {
+        pair,
+        name,
+        reference_symbol,
+        reference_label,
+    };
     match symbol.to_ascii_uppercase().as_str() {
-        "PAXG-USDT" => Some(okx("PAXG-USDT", "Pax Gold")),
-        "BTC-USDT" => Some(okx("BTC-USDT", "Bitcoin")),
-        "XSPY-USDT" => Some(okx("XSPY-USDT", "S&P 500 tokenized ETF")),
-        "XAAPL-USDT" => Some(okx("XAAPL-USDT", "Apple tokenized stock")),
-        "XNVDA-USDT" => Some(okx("XNVDA-USDT", "NVIDIA tokenized stock")),
-        "XAMZN-USDT" => Some(okx("XAMZN-USDT", "Amazon tokenized stock")),
-        "XSPCX-USDT" => Some(okx("XSPCX-USDT", "SpaceX tokenized stock")),
-        "XQQQ-USDT" => Some(okx("XQQQ-USDT", "Nasdaq-100 tokenized ETF")),
-        "XIWM-USDT" => Some(okx("XIWM-USDT", "Russell 2000 tokenized ETF")),
+        "PAXG-USDT" => Some(okx("PAXG-USDT", "Pax Gold", "GC=F", "Золото (довідка)")),
+        "BTC-USDT" => Some(okx(
+            "BTC-USDT",
+            "Bitcoin",
+            "BTC-USD",
+            "Bitcoin USD (довідка)",
+        )),
+        "XSPY-USDT" => Some(okx(
+            "XSPY-USDT",
+            "S&P 500 tokenized ETF",
+            "SPY",
+            "SPY ETF (довідка)",
+        )),
+        "XAAPL-USDT" => Some(okx(
+            "XAAPL-USDT",
+            "Apple tokenized stock",
+            "AAPL",
+            "Apple (довідка)",
+        )),
+        "XNVDA-USDT" => Some(okx(
+            "XNVDA-USDT",
+            "NVIDIA tokenized stock",
+            "NVDA",
+            "NVIDIA (довідка)",
+        )),
+        "XAMZN-USDT" => Some(okx(
+            "XAMZN-USDT",
+            "Amazon tokenized stock",
+            "AMZN",
+            "Amazon (довідка)",
+        )),
+        "XSPCX-USDT" => Some(okx(
+            "XSPCX-USDT",
+            "SpaceX tokenized stock",
+            "SPCX",
+            "SpaceX (довідка)",
+        )),
+        "XQQQ-USDT" => Some(okx(
+            "XQQQ-USDT",
+            "Nasdaq-100 tokenized ETF",
+            "QQQ",
+            "QQQ ETF (довідка)",
+        )),
+        "XIWM-USDT" => Some(okx(
+            "XIWM-USDT",
+            "Russell 2000 tokenized ETF",
+            "IWM",
+            "IWM ETF (довідка)",
+        )),
         _ => None,
     }
 }
@@ -846,6 +921,9 @@ mod tests {
             currency: None,
             intraday: vec![],
             intraday_timestamps: vec![],
+            reference_history: vec![],
+            reference_timestamps: vec![],
+            reference_label: None,
             regular_session_start_ts: None,
             regular_session_end_ts: None,
             previous_session_start_ts: None,
@@ -885,6 +963,9 @@ mod tests {
             currency: None,
             intraday: vec![],
             intraday_timestamps: vec![],
+            reference_history: vec![],
+            reference_timestamps: vec![],
+            reference_label: None,
             regular_session_start_ts: None,
             regular_session_end_ts: None,
             previous_session_start_ts: None,

@@ -74,6 +74,9 @@ fn quote(symbol: &str, price: f64, prev: f64) -> StockQuote {
         currency: None,
         intraday: vec![],
         intraday_timestamps: vec![],
+        reference_history: vec![],
+        reference_timestamps: vec![],
+        reference_label: None,
         regular_session_start_ts: None,
         regular_session_end_ts: None,
         previous_session_start_ts: None,
@@ -422,8 +425,8 @@ fn extended_hours_from_bars_shows_ah_in_overnight_gap() {
     // Now it labels AH against q.price (= yesterday's official
     // close auction).
     let mut q = quote("AAPL", 196.0, 100.0); // previous_close junk to prove
-                                              // we don't depend on it.
-    // Today's reg session: anchor (~09:30 ET) to anchor + 6.5h.
+                                             // we don't depend on it.
+                                             // Today's reg session: anchor (~09:30 ET) to anchor + 6.5h.
     q.regular_session_start_ts = Some(1_700_100_000);
     q.regular_session_end_ts = Some(1_700_123_400);
     // Yesterday's last AH bar is well before today's reg_start —
@@ -553,7 +556,9 @@ fn period_annotations_drops_leading_partial_unit_for_long_periods() {
     // "Apr" / "Jul" / "Oct" labels.
     let day_secs: i64 = 86_400;
     let mar_25_2025_noon_utc: i64 = 1_742_904_000; // Mar 25 2025 12:00 UTC
-    let ts: Vec<i64> = (0..240).map(|i| mar_25_2025_noon_utc + i * day_secs).collect();
+    let ts: Vec<i64> = (0..240)
+        .map(|i| mar_25_2025_noon_utc + i * day_secs)
+        .collect();
     let anns = period_annotations(Period::Year, &ts);
     // Without the heuristic we'd see 4 annotations (Mar/Apr/Jul/Oct);
     // the partial-Mar leading drops, leaving just the real Q boundaries.
@@ -571,7 +576,9 @@ fn period_annotations_drops_leading_partial_unit_for_long_periods() {
     // 2022/2023/... year-start labels.
     let may_20_2021_noon_utc: i64 = 1_621_512_000;
     let month_secs: i64 = 30 * day_secs;
-    let ts: Vec<i64> = (0..30).map(|i| may_20_2021_noon_utc + i * month_secs).collect();
+    let ts: Vec<i64> = (0..30)
+        .map(|i| may_20_2021_noon_utc + i * month_secs)
+        .collect();
     let anns = period_annotations(Period::FiveYear, &ts);
     assert!(
         !anns.iter().any(|a| a.bar_index == 0),
@@ -1008,7 +1015,10 @@ fn standard_size_hides_fundamentals_strip() {
         "fundamentals strip must be absent at Standard size; buffer snippet: {:?}",
         &text[..text.len().min(200)]
     );
-    assert!(!text.contains("Beta"), "Beta label must be absent at Standard size");
+    assert!(
+        !text.contains("Beta"),
+        "Beta label must be absent at Standard size"
+    );
 }
 
 /// At Expanded size (75×25), the widget is in wide layout but without a
@@ -1062,7 +1072,9 @@ fn rsi_is_neutral_for_flat_prices_and_rises_with_a_rally() {
 
 #[test]
 fn macd_has_parallel_non_empty_lines() {
-    let values: Vec<f64> = (0..60).map(|i| 100.0 + (i as f64 / 4.0).sin() * 5.0).collect();
+    let values: Vec<f64> = (0..60)
+        .map(|i| 100.0 + (i as f64 / 4.0).sin() * 5.0)
+        .collect();
     let (macd, signal) = macd_12_26_9(&values);
     assert_eq!(macd.len(), values.len());
     assert_eq!(signal.len(), values.len());
@@ -1097,7 +1109,10 @@ fn market_hint_mentions_the_selected_period_and_short_bounce() {
         Some(&[46.0]),
         Some(&macd),
     );
-    assert_eq!(text, "Коротко 1W: можливий короткий відскок, але тренд ще вниз");
+    assert_eq!(
+        text,
+        "Коротко 1W: можливий короткий відскок, але тренд ще вниз"
+    );
     assert_eq!(color, ratatui::style::Color::LightYellow);
 }
 
