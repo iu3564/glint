@@ -495,15 +495,15 @@ fn period_annotations_six_month_marks_month_boundaries() {
     ];
     let anns = period_annotations(Period::SixMonth, &ts);
     assert_eq!(anns.len(), 3);
-    for ann in &anns {
+    for ann in anns.iter().skip(1) {
         assert_eq!(ann.label.len(), 3, "label {:?}", ann.label);
     }
+    assert!(anns[0].label.ends_with("26"), "label {:?}", anns[0].label);
 }
 
 #[test]
-fn period_annotations_year_uses_quarter_boundaries() {
-    // Months 1, 2, 3 (same quarter), 4 (new quarter), 7 (new quarter)
-    // — expect 3 annotations (Q1, Q2, Q3). Timestamps are at noon UTC
+fn period_annotations_year_marks_month_boundaries_and_start_year() {
+    // Every calendar month has a guide on a 1Y view. Timestamps are at noon UTC
     // so the local-time conversion keeps each bar on the intended
     // calendar date regardless of the test runner's timezone.
     let ts = vec![
@@ -514,7 +514,8 @@ fn period_annotations_year_uses_quarter_boundaries() {
         1_783_080_000, // Jul 1 2026 12:00 UTC
     ];
     let anns = period_annotations(Period::Year, &ts);
-    assert_eq!(anns.len(), 3);
+    assert_eq!(anns.len(), 5);
+    assert!(anns[0].label.ends_with("26"), "label {:?}", anns[0].label);
 }
 
 #[test]
@@ -546,25 +547,20 @@ fn period_annotations_ten_year_keeps_only_even_years() {
 }
 
 #[test]
-fn period_annotations_drops_leading_partial_unit_for_long_periods() {
-    // Synthesise a 1Y-shaped fixture: 240 daily bars spanning roughly
-    // 8 months, with bar 0 at a mid-quarter date so the gap from
-    // bar 0 to the next quarter boundary is significantly shorter
-    // than the gap between subsequent boundaries. The universal gap-
-    // ratio heuristic in `period_annotations` then drops bar 0
-    // because its leading partial quarter would crowd the real
-    // "Apr" / "Jul" / "Oct" labels.
+fn period_annotations_preserves_start_for_medium_ranges_and_drops_it_for_long_ranges() {
+    // 1Y is a rolling view, so its start label is deliberately preserved:
+    // it tells the reader exactly which part of the year is visible.
     let day_secs: i64 = 86_400;
     let mar_25_2025_noon_utc: i64 = 1_742_904_000; // Mar 25 2025 12:00 UTC
     let ts: Vec<i64> = (0..240)
         .map(|i| mar_25_2025_noon_utc + i * day_secs)
         .collect();
     let anns = period_annotations(Period::Year, &ts);
-    // Without the heuristic we'd see 4 annotations (Mar/Apr/Jul/Oct);
-    // the partial-Mar leading drops, leaving just the real Q boundaries.
+    // The partial-Mar start remains and carries the year; monthly guides
+    // continue with Apr/May/… across the rest of the range.
     assert!(
-        !anns.iter().any(|a| a.bar_index == 0),
-        "leading mid-Q1 label should be dropped: {anns:?}"
+        anns.iter().any(|a| a.bar_index == 0 && a.label == "Mar 25"),
+        "rolling-year start should be retained: {anns:?}"
     );
     assert!(
         anns.iter().any(|a| a.label == "Apr"),

@@ -82,8 +82,8 @@ pub struct PeriodAnnotation {
 ///   - 1W → start of each new local trading day (Mon..Fri).
 ///   - 1M → start of each new ISO week (labelled `wk1`..`wk4`).
 ///   - 6M → start of each new month.
-///   - YTD → start of each new calendar quarter (Jan / Apr / Jul / Oct).
-///   - 1Y → start of each new calendar quarter.
+///   - YTD / 1Y → start of each new calendar month. The first label also
+///     carries its year, so a rolling range is unambiguous at a glance.
 ///   - 3Y / 5Y → start of each new calendar year.
 ///   - 10Y → every second calendar year boundary.
 ///
@@ -125,16 +125,9 @@ pub fn period_annotations(period: Period, timestamps: &[i64]) -> Vec<PeriodAnnot
             |dt| dt.iso_week().week() as i32 * 100 + (dt.iso_week().year() % 100),
             |dt| format!("wk{}", iso_week_of_month_or_zero(*dt) + 1),
         ),
-        Period::SixMonth => annotate_when_changes(
+        Period::SixMonth | Period::YearToDate | Period::Year => annotate_when_changes(
             &local,
             |dt| dt.year() * 100 + dt.month() as i32,
-            |dt| month_short_name(dt.month()).to_string(),
-        ),
-        Period::YearToDate | Period::Year => annotate_when_changes(
-            &local,
-            // Group by (year, calendar quarter) so a guide lands at
-            // the first bar of each Q1/Q2/Q3/Q4 boundary.
-            |dt| dt.year() * 10 + ((dt.month() as i32 - 1) / 3),
             |dt| month_short_name(dt.month()).to_string(),
         ),
         Period::ThreeYear | Period::FiveYear => {
@@ -156,6 +149,16 @@ pub fn period_annotations(period: Period, timestamps: &[i64]) -> Vec<PeriodAnnot
             anns
         }
     };
+
+    // For the medium-length ranges, retain and qualify the leading date.
+    // It makes the scale self-contained: `Aug 25 … Jul 26`, rather than a
+    // row of month names whose year and left boundary have to be inferred.
+    let preserve_start = matches!(period, Period::SixMonth | Period::YearToDate | Period::Year);
+    if preserve_start {
+        if let (Some(first), Some(dt)) = (out.first_mut(), local.first()) {
+            first.label = format!("{} {:02}", month_short_name(dt.month()), dt.year() % 100);
+        }
+    }
 
     // Bar 0 is always emitted by `annotate_when_changes` as the chart's
     // leftmost label, but most charts open mid-unit (a 1Y chart in late
@@ -184,7 +187,7 @@ pub fn period_annotations(period: Period, timestamps: &[i64]) -> Vec<PeriodAnnot
             // exactly one unit before the next boundary (e.g. Jan 1
             // for a 5Y chart where every annotation is Jan 1)
             // doesn't get dropped.
-            if first_gap < median_later {
+            if !preserve_start && first_gap < median_later {
                 out.remove(0);
             }
         }
