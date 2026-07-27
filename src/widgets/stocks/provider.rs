@@ -579,7 +579,7 @@ fn xstock_candle_limit(period: Period) -> u16 {
 fn okx_candle_interval(period: Period) -> &'static str {
     match period {
         Period::Day => "5m",
-        Period::Week | Period::Month => "1h",
+        Period::Week | Period::Month => "1H",
         _ => "1D",
     }
 }
@@ -928,5 +928,13 @@ mod tests {
         assert!(usdt_spot_asset("VTIx-USDT").is_none());
         assert_eq!(usdt_spot_asset("PAXG-USDT").unwrap().pair, "PAXG-USDT");
         assert_eq!(usdt_spot_asset("BTC-USDT").unwrap().pair, "BTC-USDT");
+    }
+
+    #[test]
+    fn okx_intervals_use_the_api_case_sensitive_format() {
+        assert_eq!(okx_candle_interval(Period::Day), "5m");
+        assert_eq!(okx_candle_interval(Period::Week), "1H");
+        assert_eq!(okx_candle_interval(Period::Month), "1H");
+        assert_eq!(okx_candle_interval(Period::Year), "1D");
     }
 }
