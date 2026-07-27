@@ -174,7 +174,7 @@ impl YahooFinanceProvider {
     }
 
     pub async fn fetch_quote(&self, symbol: &str, period: Period) -> Result<StockQuote> {
-        if let Some(asset) = xstock_usdt_asset(symbol) {
+        if let Some(asset) = usdt_spot_asset(symbol) {
             return self.fetch_xstock_usdt(symbol, asset, period).await;
         }
         // Recently launched tokenized assets are not consistently charted by
@@ -591,7 +591,7 @@ struct BybitKlineResult {
     list: Vec<Vec<String>>,
 }
 
-fn xstock_usdt_asset(symbol: &str) -> Option<XStockUsdtAsset> {
+fn usdt_spot_asset(symbol: &str) -> Option<XStockUsdtAsset> {
     let gate = |pair, name| XStockUsdtAsset {
         pair,
         name,
@@ -603,6 +603,8 @@ fn xstock_usdt_asset(symbol: &str) -> Option<XStockUsdtAsset> {
         venue: XStockVenue::Bybit,
     };
     match symbol.to_ascii_uppercase().as_str() {
+        "PAXG-USDT" => Some(gate("PAXG_USDT", "Pax Gold")),
+        "BTC-USDT" => Some(gate("BTC_USDT", "Bitcoin")),
         "SPYX-USDT" => Some(gate("SPYX_USDT", "SP500 xStock")),
         "AAPLX-USDT" => Some(gate("AAPLX_USDT", "Apple xStock")),
         "NVDAX-USDT" => Some(gate("NVDAX_USDT", "NVIDIA xStock")),
@@ -972,13 +974,15 @@ mod tests {
 
     #[test]
     fn xstock_usdt_registry_uses_real_spot_pairs() {
-        let vti = xstock_usdt_asset("VTIx-USDT").expect("VTIx USDT pair");
+        let vti = usdt_spot_asset("VTIx-USDT").expect("VTIx USDT pair");
         assert_eq!(vti.pair, "VTIX_USDT");
         assert!(matches!(vti.venue, XStockVenue::Gate));
 
-        let spacex = xstock_usdt_asset("SPCXx-USDT").expect("SpaceX USDT pair");
+        let spacex = usdt_spot_asset("SPCXx-USDT").expect("SpaceX USDT pair");
         assert_eq!(spacex.pair, "SPCXXUSDT");
         assert!(matches!(spacex.venue, XStockVenue::Bybit));
-        assert!(xstock_usdt_asset("MSFTx-USDT").is_none());
+        assert!(usdt_spot_asset("MSFTx-USDT").is_none());
+        assert_eq!(usdt_spot_asset("PAXG-USDT").unwrap().pair, "PAXG_USDT");
+        assert_eq!(usdt_spot_asset("BTC-USDT").unwrap().pair, "BTC_USDT");
     }
 }
