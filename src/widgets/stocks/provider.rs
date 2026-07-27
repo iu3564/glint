@@ -22,7 +22,6 @@ use crate::market_data::{
     Period,
 };
 
-const GLDY_USD_SYMBOL: &str = "GLDY-USD";
 const GLDY_COINGECKO_ID: &str = "streamex-gldy";
 
 /// Snapshot of a single ticker, derived from Yahoo Finance's v8/chart endpoint.
@@ -175,12 +174,14 @@ impl YahooFinanceProvider {
     }
 
     pub async fn fetch_quote(&self, symbol: &str, period: Period) -> Result<StockQuote> {
-        // GLDY is a recently launched tokenized-security and Yahoo does not
-        // publish a usable chart for it. CoinGecko tracks it under this ID,
-        // so route just this symbol there while every other watchlist item
-        // keeps Yahoo's richer equities/futures metadata.
-        if symbol.eq_ignore_ascii_case(GLDY_USD_SYMBOL) {
-            return self.fetch_coingecko_gldy(period).await;
+        // Recently launched tokenized assets are not consistently charted by
+        // Yahoo. CoinGecko tracks their actual on-chain markets, so route
+        // just these symbols there while ordinary shares/futures keep
+        // Yahoo's richer equities metadata.
+        if let Some((coin_id, display_name)) = coingecko_asset(symbol) {
+            return self
+                .fetch_coingecko_asset(symbol, coin_id, display_name, period)
+                .await;
         }
         // Chart and summary fetched in parallel — summary failures (common
         // for indices and after crumb expiry) don't fail the whole quote.
@@ -216,22 +217,28 @@ impl YahooFinanceProvider {
         Ok(quote)
     }
 
-    async fn fetch_coingecko_gldy(&self, period: Period) -> Result<StockQuote> {
+    async fn fetch_coingecko_asset(
+        &self,
+        symbol: &str,
+        coin_id: &str,
+        display_name: &str,
+        period: Period,
+    ) -> Result<StockQuote> {
         let days = coingecko_days(period);
         let url = format!(
-            "https://api.coingecko.com/api/v3/coins/{GLDY_COINGECKO_ID}/market_chart?vs_currency=usd&days={days}"
+            "https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart?vs_currency=usd&days={days}"
         );
         let response = self
             .client
             .get(&url)
             .send()
             .await
-            .context("GET CoinGecko GLDY failed")?
+            .with_context(|| format!("GET CoinGecko {symbol} failed"))?
             .error_for_status()
-            .context("CoinGecko GLDY returned non-2xx")?
+            .with_context(|| format!("CoinGecko {symbol} returned non-2xx"))?
             .json::<CoinGeckoMarketChart>()
             .await
-            .context("failed to deserialize CoinGecko GLDY response")?;
+            .with_context(|| format!("failed to deserialize CoinGecko {symbol} response"))?;
         let mut points: Vec<(i64, f64)> = response
             .prices
             .into_iter()
@@ -240,7 +247,7 @@ impl YahooFinanceProvider {
             })
             .collect();
         if points.is_empty() {
-            anyhow::bail!("CoinGecko returned no GLDY price history");
+            anyhow::bail!("CoinGecko returned no {symbol} price history");
         }
         points = downsample_pairs(points, 240);
         let price = points.last().map(|(_, value)| *value).unwrap_or_default();
@@ -253,8 +260,8 @@ impl YahooFinanceProvider {
         let day_high = points.iter().map(|(_, value)| *value).reduce(f64::max);
         let day_low = points.iter().map(|(_, value)| *value).reduce(f64::min);
         Ok(StockQuote {
-            symbol: GLDY_USD_SYMBOL.into(),
-            short_name: "Streamex GLDY".into(),
+            symbol: symbol.into(),
+            short_name: display_name.into(),
             price,
             previous_close,
             day_high,
@@ -460,6 +467,20 @@ fn coingecko_days(period: Period) -> String {
         Period::YearToDate => chrono::Local::now().ordinal().max(1).to_string(),
         Period::Year => "365".into(),
         Period::ThreeYear | Period::FiveYear | Period::TenYear => "max".into(),
+    }
+}
+
+/// Assets whose on-chain market chart is supplied by CoinGecko rather than
+/// Yahoo. The xStocks IDs are the issuer-backed, unwrapped products.
+fn coingecko_asset(symbol: &str) -> Option<(&'static str, &'static str)> {
+    match symbol.to_ascii_uppercase().as_str() {
+        "GLDY-USD" => Some((GLDY_COINGECKO_ID, "Streamex GLDY")),
+        "SPYX-USD" => Some(("sp500-xstock", "SP500 xStock")),
+        "AAPLX-USD" => Some(("apple-xstock", "Apple xStock")),
+        "MSFTX-USD" => Some(("microsoft-xstock", "Microsoft xStock")),
+        "NVDAX-USD" => Some(("nvidia-xstock", "NVIDIA xStock")),
+        "AMZNX-USD" => Some(("amazon-xstock", "Amazon xStock")),
+        _ => None,
     }
 }
 
@@ -746,5 +767,18 @@ mod tests {
         assert_eq!(coingecko_days(Period::SixMonth), "180");
         assert_eq!(coingecko_days(Period::Year), "365");
         assert_eq!(coingecko_days(Period::FiveYear), "max");
+    }
+
+    #[test]
+    fn coingecko_asset_registry_keeps_xstocks_on_their_onchain_market() {
+        assert_eq!(
+            coingecko_asset("NVDAx-USD"),
+            Some(("nvidia-xstock", "NVIDIA xStock"))
+        );
+        assert_eq!(
+            coingecko_asset("spyX-usd"),
+            Some(("sp500-xstock", "SP500 xStock"))
+        );
+        assert_eq!(coingecko_asset("AAPL"), None);
     }
 }

@@ -20,6 +20,10 @@ url = "https://news.google.com/rss/search?q=(PAXG+OR+%22Pax+Gold%22)+when%3A30d&
 label = "GLDY · світ"
 url = "https://news.google.com/rss/search?q=(GLDY+OR+%22Streamex+GLDY%22)+when%3A30d&hl=en&gl=US&ceid=US%3Aen"
 
+[[feeds]]
+label = "xStocks · світ"
+url = "https://news.google.com/rss/search?q=(xStocks+OR+SPYx+OR+AAPLx+OR+MSFTx+OR+NVDAx+OR+AMZNx)+when%3A30d&hl=en&gl=US&ceid=US%3Aen"
+
 [[topics]]
 label = "Золото"
 keywords = ["gold", "золото", "золот", "xau", "bullion", "ounce", "унці", "тройськ", "дорогоцін", "comex", "lbma"]
@@ -35,6 +39,10 @@ keywords = ["paxg", "pax gold", "paxos", "tokenized gold", "токенізова
 [[topics]]
 label = "GLDY"
 keywords = ["gldy", "streamex", "yield-bearing gold", "gold-backed yield", "дохідне золото"]
+
+[[topics]]
+label = "xStocks"
+keywords = ["xstock", "spyx", "aaplx", "msftx", "nvdax", "amznx", "backed assets", "tokenized equity"]
 
 [[topics]]
 label = "Валюта"
