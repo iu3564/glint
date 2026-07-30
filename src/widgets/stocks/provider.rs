@@ -597,6 +597,12 @@ fn usdt_spot_asset(symbol: &str) -> Option<XStockUsdtAsset> {
             "BTC-USD",
             "Bitcoin USD (довідка)",
         )),
+        "ETH-USDT" => Some(okx(
+            "ETH-USDT",
+            "Ethereum",
+            "ETH-USD",
+            "Ethereum USD (довідка)",
+        )),
         "XSPY-USDT" => Some(okx(
             "XSPY-USDT",
             "S&P 500 tokenized ETF",
@@ -620,6 +626,12 @@ fn usdt_spot_asset(symbol: &str) -> Option<XStockUsdtAsset> {
             "Amazon tokenized stock",
             "AMZN",
             "Amazon (довідка)",
+        )),
+        "XMETA-USDT" => Some(okx(
+            "XMETA-USDT",
+            "Meta tokenized stock",
+            "META",
+            "Meta (довідка)",
         )),
         "XSPCX-USDT" => Some(okx(
             "XSPCX-USDT",
@@ -1018,6 +1030,9 @@ mod tests {
         assert!(usdt_spot_asset("VTIx-USDT").is_none());
         assert_eq!(usdt_spot_asset("PAXG-USDT").unwrap().pair, "PAXG-USDT");
         assert_eq!(usdt_spot_asset("BTC-USDT").unwrap().pair, "BTC-USDT");
+        assert_eq!(usdt_spot_asset("ETH-USDT").unwrap().pair, "ETH-USDT");
+        let meta = usdt_spot_asset("XMETA-USDT").expect("Meta USDT pair");
+        assert_eq!(meta.reference_symbol, "META");
     }
 
     #[test]
